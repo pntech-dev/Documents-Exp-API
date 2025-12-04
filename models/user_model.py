@@ -8,8 +8,10 @@ class User(Base):
 
     # Evry column names has the same name as in SQL
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(100))
-    is_active = Column(Boolean, default=True)
+    username = Column(String(50), unique=True, nullable=True)
+    email = Column(String(100), unique=True, nullable=False)
+    department = Column(String(100), default=None, nullable=True)
+
+    is_admin = Column(Boolean, default=False)
 
     password_hash = Column(String, nullable=False)

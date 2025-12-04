@@ -20,6 +20,40 @@ class AuthRepository:
         return result
     
 
+    async def get_user_by_username(self, username: str) -> User | None:
+        """
+        Return User by username or None
+        """
+
+        query = select(User).where(User.username == username)
+        result = await self._execute_user(query)
+
+        return result
+    
+
+    async def get_user_by_email(self, email: str) -> User | None:
+        """
+        Return User by email or None
+        """
+
+        query = select(User).where(User.email == email)
+        result = await self._execute_user(query)
+
+        return result
+    
+
+    async def create_user(self, user: User) -> User:
+        """
+        Create new user in db
+        """
+
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+
+        return user
+    
+
     async def _execute_user(self, query) -> User | None:
         """
         Make a query to db and return User or None

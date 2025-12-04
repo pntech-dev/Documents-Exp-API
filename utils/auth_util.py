@@ -5,10 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils.security_util import security_settings
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2AuthorizationCodeBearer
+from fastapi.security import OAuth2PasswordBearer
 
 
-oauth2_scheme = OAuth2AuthorizationCodeBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -37,7 +37,7 @@ def create_access_token(
     encoded_jwt = jwt.encode(
         to_encode,
         security_settings.SECRET_KEY,
-        algorithm=security_settings.ALGHORITM,
+        algorithm=security_settings.ALGORITHM,
     )
 
     return encoded_jwt
@@ -54,7 +54,7 @@ async def get_current_user(
         payload = jwt.decode(
             token,
             security_settings.SECRET_KEY,
-            algorithms=[security_settings.ALGHORITM]
+            algorithms=[security_settings.ALGORITHM]
         )
 
         user_id: str = payload.get("sub")

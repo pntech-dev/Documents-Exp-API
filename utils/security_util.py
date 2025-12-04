@@ -7,11 +7,12 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class SecuritySettings(BaseSettings):
     SECRET_KEY: str
-    ALGHORITM: str
+    ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 def hash_password(password: str) -> str:
