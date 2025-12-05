@@ -73,3 +73,20 @@ class AuthService:
         )
 
         return response
+    
+
+    async def get_user(self, user_id: int) -> UserResponse | None:
+        """Return user by id"""
+
+        user = await self.repo.get_user_by_id(user_id=user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        response = UserResponse(
+            id=user.id,
+            email=user.email,
+            username=user.username,
+            department=user.department
+        )
+
+        return response
