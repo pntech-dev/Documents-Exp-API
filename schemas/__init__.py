@@ -1,1 +1,1 @@
-from .auth_schema import UserLogin, UserSignUp, UserResponse, UserSignUpResponse
+from .auth_schema import UserLogin, UserSignUp, UserResponse, UserTokenResponse

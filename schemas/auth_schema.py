@@ -35,7 +35,7 @@ class UserResponse(BaseModel):
     department: str | None = None
 
 
-class UserSignUpResponse(BaseModel):
+class UserTokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse

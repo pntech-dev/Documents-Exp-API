@@ -2,7 +2,7 @@ from db import get_db
 from jose import jwt, JWTError
 from repositories import AuthRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.security_util import security_settings
+from core.config import settings
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -30,14 +30,14 @@ def create_access_token(
     now = datetime.now(timezone.utc)
     
     if expires_delta is None:
-        expires_delta = timedelta(minutes=security_settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": now + expires_delta})
 
     encoded_jwt = jwt.encode(
         to_encode,
-        security_settings.SECRET_KEY,
-        algorithm=security_settings.ALGORITHM,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
     )
 
     return encoded_jwt
@@ -53,8 +53,8 @@ async def get_current_user(
     try:
         payload = jwt.decode(
             token,
-            security_settings.SECRET_KEY,
-            algorithms=[security_settings.ALGORITHM]
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
         )
 
         user_id: str = payload.get("sub")
