@@ -15,3 +15,5 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
 
     password_hash = Column(String, nullable=False)
+    
+    refresh_tokens = relationship('RefreshToken', back_populates='user')
