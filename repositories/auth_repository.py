@@ -1,4 +1,4 @@
-import logging
+import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,20 +50,13 @@ class AuthRepository:
  
     # === Refresh token ===
 
-    async def get_refresh_token(self, token: str) -> RefreshToken | None:
-        """Return refresh token or None"""
-
-        query = select(RefreshToken).where(RefreshToken.token == token)
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
-    
-
     async def get_active_token(self, token: str) -> RefreshToken | None:
         """Return active refresh token or None"""
         
         query = select(RefreshToken).where(
             RefreshToken.token == token,
-            RefreshToken.used == False
+            RefreshToken.used == False,
+            RefreshToken.expires_at > datetime.datetime.utcnow()
         )
 
         result = await self.session.execute(query)
