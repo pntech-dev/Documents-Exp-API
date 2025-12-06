@@ -1,12 +1,14 @@
-from models.user_model import User
-from db import get_db
 from jose import jwt, JWTError
-from repositories import AuthRepository
+from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.config import settings
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader
+
+
+from db import get_db
+from core.config import settings
+from models.user_model import User
+from repositories import AuthRepository
 
 
 oauth2_scheme = APIKeyHeader(name="Authorization", auto_error=False)

@@ -10,7 +10,7 @@ class RefreshToken(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     token = Column(String, nullable=False, unique=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=False)
 
     used = Column(Boolean, default=False)

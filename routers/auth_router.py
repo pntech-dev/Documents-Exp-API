@@ -30,6 +30,14 @@ async def login(
     return await service.login(data=data)
 
 
+@router.post("/refresh", response_model=UserTokenResponse)
+async def refresh(
+    refresh_token: str,
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.refresh_token(refresh_token=refresh_token)
+
+
 @router.get("/user", response_model=UserResponse)
 async def get_user(
     service: AuthService = Depends(get_auth_service),
