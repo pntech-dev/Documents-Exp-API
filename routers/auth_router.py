@@ -35,6 +35,4 @@ async def get_user(
     service: AuthService = Depends(get_auth_service),
     current_user = Depends(get_current_user)
 ):
-    
-    print("Current user:", current_user)
     return await service.get_user(user_id=current_user.id)

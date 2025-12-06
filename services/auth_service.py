@@ -1,10 +1,12 @@
+from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models import User
+from core.config import settings
 from repositories import AuthRepository
 from utils import hash_password, create_access_token, verify_password
 from schemas import UserSignUp, UserTokenResponse, UserResponse, UserLogin
-from models import User
 
 
 class AuthService:
@@ -31,18 +33,11 @@ class AuthService:
 
         created_user = await self.repo.create_user(user=user)
 
-        # Create token
-        token = create_access_token(data={"sub": str(created_user.id)})
+        # Create tokens
+        tokens = await self._create_tokens(user=created_user)
 
         # Create response
-        response = UserTokenResponse(
-            access_token=token,
-            token_type="bearer",
-            user=UserResponse(
-                id=created_user.id,
-                email=created_user.email
-            )
-        )
+        response = await self._create_token_response(user=user, tokens=tokens)
 
         return response
     
@@ -59,18 +54,11 @@ class AuthService:
         if not is_password_correct:
             raise HTTPException(status_code=400, detail="Email or password is incorrect")
         
-        # Create token
-        token = create_access_token(data={"sub": str(user.id)})
+        # Create tokens
+        tokens = await self._create_tokens(user=user)
 
         # Create response
-        response = UserTokenResponse(
-            access_token=token,
-            token_type="bearer",
-            user=UserResponse(
-                id=user.id,
-                email=user.email
-            )
-        )
+        response = await self._create_token_response(user=user, tokens=tokens)
 
         return response
     
@@ -90,3 +78,39 @@ class AuthService:
         )
 
         return response
+    
+
+    async def _create_tokens(self, user: User) -> list[str]:
+        """Create access and refresh tokens"""
+
+        try:
+            access_token = create_access_token(data={"sub": str(user.id)})
+            refresh_token = create_access_token(
+                data={"sub": str(user.id)},
+                expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+            )
+
+            return [access_token, refresh_token]
+        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"e")
+    
+
+    async def _create_token_response(self, user: User, tokens: list[str]) -> UserTokenResponse:
+        """Create token response"""
+
+        try:
+            response = UserTokenResponse(
+                access_token=tokens[0],
+                refresh_token=tokens[1],
+                token_type="bearer",
+                user=UserResponse(
+                    id=user.id,
+                    email=user.email
+                )
+            )
+
+            return response
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
