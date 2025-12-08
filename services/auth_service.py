@@ -1,12 +1,21 @@
-from datetime import timedelta, datetime
+from random import randint
 from fastapi import HTTPException
+from datetime import timedelta, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import User, RefreshToken
 from core.config import settings
 from repositories import AuthRepository
+from models import User, RefreshToken, VerificationCode
 from utils import hash_password, create_access_token, verify_password
-from schemas import UserSignUp, UserTokenResponse, UserResponse, UserLogin
+from schemas import (
+    UserSignUp, 
+    UserTokenResponse, 
+    UserLogin, 
+    UserResponse,
+    ForgotPasswordSchema, 
+    EmailConfirmSchema, 
+    ChangePasswordSchema
+)
 
 
 class AuthService:
@@ -193,3 +202,88 @@ class AuthService:
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        
+
+    # Password
+
+    async def forgot_password(self, data: ForgotPasswordSchema) -> dict:
+        """Forgot password"""
+        # Check if user with this email exists
+        user = await self.repo.get_user_by_email(email=data.email)
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+        
+        # Create email verification code
+        code = randint(100000, 999999)
+        code_hash = hash_password(str(code))
+
+        # Send email with verification code
+        print(f"Verification code: {code}")
+
+        # Save a hash of verification code in DB
+        verification_code = VerificationCode(
+            user_id=user.id,
+            code=code_hash,
+            expires_at=datetime.utcnow() + timedelta(
+                minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+            )
+        )
+
+        await self.repo.save_verification_code(code=verification_code)
+
+        return {"detail": "Email sent"}
+
+
+    async def confirm_email(self, data: EmailConfirmSchema) -> dict:
+        """Confirm email"""
+        # Get user by email
+        user = await self.repo.get_user_by_email(email=data.email)
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+        
+        # Get code hash
+        code = await self.repo.get_verification_code(user_id=user.id)
+        if code is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Verification code not found"
+            )
+
+        # Check if code is correct
+        is_code_correct = verify_password(data.code, code.code)
+        if not is_code_correct:
+            raise HTTPException(
+                status_code=400,
+                detail="Verification code is incorrect"
+            )
+        
+        # Invalidate code
+        await self.repo.invalidate_verification_code(code=code)
+
+        return {"detail": "Email confirmed"}
+
+
+    async def change_password(self, data: ChangePasswordSchema) -> dict:
+        """Reset password"""
+        # Get user
+        user = await self.repo.get_user_by_email(email=data.email)
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+        
+        # Create password hash
+        password_hash = hash_password(data.password)
+
+        # Update user
+        user.password_hash = password_hash
+        await self.repo.update_user(user=user)
+
+        return {"detail": "Password changed"}

@@ -17,3 +17,4 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     
     refresh_tokens = relationship('RefreshToken', back_populates='user')
+    verification_codes = relationship('VerificationCode', back_populates='user')

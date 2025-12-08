@@ -3,7 +3,7 @@ import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import User, RefreshToken
+from models import User, RefreshToken, VerificationCode
 
 
 class AuthRepository:
@@ -47,6 +47,47 @@ class AuthRepository:
 
         return user
     
+
+    async def update_user(self, user: User) -> User:
+        """Update user in db"""
+
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+
+        return user
+    
+
+    # === Password ===
+
+    async def get_verification_code(self, user_id: int) -> VerificationCode | None:
+        """Return verification code or None"""
+
+        query = select(VerificationCode).where(
+            VerificationCode.user_id == user_id,
+            VerificationCode.expires_at > datetime.datetime.utcnow(),
+            VerificationCode.used == False
+        )
+
+        code = await self.session.execute(query)
+
+        return code.scalar_one_or_none()
+    
+
+    async def invalidate_verification_code(self, code: VerificationCode) -> None:
+        """Invalidate verification code"""
+
+        code.used = True
+        await self.session.commit()
+        await self.session.refresh(code)
+
+
+    async def save_verification_code(self, code: VerificationCode) -> None:
+        """Save verification code in db"""
+
+        self.session.add(code)
+        await self.session.commit()
+    
  
     # === Refresh token ===
 
@@ -74,6 +115,6 @@ class AuthRepository:
         return refresh_token
     
 
-    async def invalidate(self, token: RefreshToken):
+    async def invalidate(self, token: RefreshToken) -> None:
         token.used = True
         await self.session.commit()
