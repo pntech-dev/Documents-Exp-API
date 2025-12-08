@@ -40,3 +40,7 @@ class UserTokenResponse(BaseModel):
     refresh_token: str
     token_type: str
     user: UserResponse
+
+
+class RefreshTokenSchema(BaseModel):
+    refresh_token: str

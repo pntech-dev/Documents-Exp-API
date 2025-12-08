@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.deps import get_db
 from services import AuthService
-from schemas import UserSignUp, UserTokenResponse, UserLogin, UserResponse
+from schemas import UserSignUp, UserTokenResponse, UserLogin, UserResponse, RefreshTokenSchema
 from utils import get_current_user
 
 
@@ -32,10 +32,10 @@ async def login(
 
 @router.post("/refresh", response_model=UserTokenResponse)
 async def refresh(
-    refresh_token: str,
+    data: RefreshTokenSchema,
     service: AuthService = Depends(get_auth_service),
 ):
-    return await service.refresh_token(refresh_token=refresh_token)
+    return await service.refresh_token(refresh_token=data.refresh_token)
 
 
 @router.get("/user", response_model=UserResponse)
