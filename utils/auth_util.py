@@ -1,5 +1,5 @@
 from jose import jwt, JWTError
-from fastapi.security import APIKeyHeader
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
@@ -11,7 +11,7 @@ from models.user_model import User
 from repositories import AuthRepository
 
 
-oauth2_scheme = APIKeyHeader(name="Authorization", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
