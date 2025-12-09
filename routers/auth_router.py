@@ -73,7 +73,7 @@ async def confirm_email(
     return await service.confirm_email(data=data)
 
 
-@router.patch("/change-password")
+@router.patch("/reset-password")
 async def reset_password(
     data: ChangePasswordSchema,
     service: AuthService = Depends(get_auth_service),

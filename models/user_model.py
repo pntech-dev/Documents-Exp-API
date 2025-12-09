@@ -18,3 +18,4 @@ class User(Base):
     
     refresh_tokens = relationship('RefreshToken', back_populates='user')
     verification_codes = relationship('VerificationCode', back_populates='user')
+    reset_tokens = relationship('ResetToken', back_populates='user')

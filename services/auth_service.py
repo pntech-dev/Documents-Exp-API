@@ -1,3 +1,6 @@
+import secrets
+import hashlib
+
 from random import randint
 from fastapi import HTTPException
 from datetime import timedelta, datetime
@@ -5,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from repositories import AuthRepository
-from models import User, RefreshToken, VerificationCode
+from models import User, RefreshToken, VerificationCode, ResetToken
 from utils import hash_password, create_access_token, verify_password
 from schemas import (
     UserSignUp, 
@@ -107,8 +110,7 @@ class AuthService:
         """Return user by id"""
 
         user = await self.repo.get_user_by_id(user_id=user_id)
-        if user is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        await self._check_404_error(object=user, detail="Not found")
         
         response = UserResponse(
             id=user.id,
@@ -208,51 +210,54 @@ class AuthService:
 
     async def forgot_password(self, data: ForgotPasswordSchema) -> dict:
         """Forgot password"""
-        # Check if user with this email exists
         user = await self.repo.get_user_by_email(email=data.email)
-        if user is None:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
         
-        # Create email verification code
-        code = randint(100000, 999999)
-        code_hash = hash_password(str(code))
+        # To prevent user enumeration, we perform the logic only if the user
+        # exists, but we return a generic message regardless.
+        if user:
+            # Create email verification code
+            code = randint(100000, 999999)
+            code_hash = hash_password(str(code))
 
-        # Send email with verification code
-        print(f"Verification code: {code}")
+            # Send email with verification code
+            print(f"Verification code: {code}")
 
-        # Save a hash of verification code in DB
-        verification_code = VerificationCode(
-            user_id=user.id,
-            code=code_hash,
-            expires_at=datetime.utcnow() + timedelta(
-                minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+            # Invalidate all previous verification codes for user
+            await self.repo.invalidate_all_user_verification_codes(user_id=user.id)
+
+            # Save a hash of verification code in DB
+            verification_code = VerificationCode(
+                user_id=user.id,
+                code=code_hash,
+                expires_at=datetime.utcnow() + timedelta(
+                    minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+                )
             )
-        )
+            await self.repo.save_verification_code(code=verification_code)
 
-        await self.repo.save_verification_code(code=verification_code)
-
-        return {"detail": "Email sent"}
+        return {"detail": "If an account with this email exists, a verification code has been sent."}
 
 
     async def confirm_email(self, data: EmailConfirmSchema) -> dict:
         """Confirm email"""
         # Get user by email
         user = await self.repo.get_user_by_email(email=data.email)
-        if user is None:
+        
+        # To prevent user enumeration, we check for the user first. If they don't exist,
+        # we can't proceed, but we must return an error that is indistinguishable
+        # from a failed code verification to avoid leaking information.
+        if not user:
             raise HTTPException(
-                status_code=404,
-                detail="User not found"
+                status_code=400,
+                detail="Verification code is incorrect or has expired"
             )
         
         # Get code hash
         code = await self.repo.get_verification_code(user_id=user.id)
-        if code is None:
+        if not code:
             raise HTTPException(
-                status_code=404,
-                detail="Verification code not found"
+                status_code=400,
+                detail="Verification code is incorrect or has expired"
             )
 
         # Check if code is correct
@@ -260,24 +265,40 @@ class AuthService:
         if not is_code_correct:
             raise HTTPException(
                 status_code=400,
-                detail="Verification code is incorrect"
+                detail="Verification code is incorrect or has expired"
             )
         
         # Invalidate code
         await self.repo.invalidate_verification_code(code=code)
 
-        return {"detail": "Email confirmed"}
+        # Create reset token
+        reset_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(reset_token.encode('utf-8')).hexdigest()
+
+        # Save a reset_token
+        token = ResetToken(
+            user_id=user.id,
+            token=token_hash,
+            expires_at=datetime.utcnow() + timedelta(
+                minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+            )
+        )
+
+        await self.repo.save_reset_token(token=token)
+
+        return {"reset_token": reset_token}
 
 
     async def change_password(self, data: ChangePasswordSchema) -> dict:
         """Reset password"""
+        # Get reset token
+        token_hash = hashlib.sha256(data.reset_token.encode('utf-8')).hexdigest()
+        token = await self.repo.get_reset_token(token=token_hash)
+        self._check_404_error(object=token, detail="Not found")
+        
         # Get user
-        user = await self.repo.get_user_by_email(email=data.email)
-        if user is None:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
+        user = await self.repo.get_user_by_id(user_id=token.user_id)
+        self._check_404_error(object=user, detail="Not found")
         
         # Create password hash
         password_hash = hash_password(data.password)
@@ -286,4 +307,18 @@ class AuthService:
         user.password_hash = password_hash
         await self.repo.update_user(user=user)
 
+        # Invalidate reset token
+        await self.repo.invalidate_reset_token(token=token)
+
         return {"detail": "Password changed"}
+    
+
+    async def _check_404_error(self, object, detail: str) -> bool:
+        """Check if object exists"""
+        if object is None:
+            raise HTTPException(
+                status_code=404,
+                detail=detail
+            )
+        
+        return True

@@ -1,9 +1,9 @@
 import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import User, RefreshToken, VerificationCode
+from models import User, RefreshToken, VerificationCode, ResetToken
 
 
 class AuthRepository:
@@ -74,6 +74,34 @@ class AuthRepository:
         return code.scalar_one_or_none()
     
 
+    async def get_reset_token(self, token: str) -> ResetToken | None:
+        """Return reset token or None"""
+
+        query = select(ResetToken).where(
+            ResetToken.token == token,
+            ResetToken.expires_at > datetime.datetime.utcnow(),
+            ResetToken.used == False
+        )
+
+        token = await self.session.execute(query)
+
+        return token.scalar_one_or_none()
+
+
+    async def save_verification_code(self, code: VerificationCode) -> None:
+        """Save verification code in db"""
+
+        self.session.add(code)
+        await self.session.commit()
+
+
+    async def save_reset_token(self, token: ResetToken) -> None:
+        """Save reset token in db"""
+
+        self.session.add(token)
+        await self.session.commit()
+    
+
     async def invalidate_verification_code(self, code: VerificationCode) -> None:
         """Invalidate verification code"""
 
@@ -82,12 +110,25 @@ class AuthRepository:
         await self.session.refresh(code)
 
 
-    async def save_verification_code(self, code: VerificationCode) -> None:
-        """Save verification code in db"""
+    async def invalidate_all_user_verification_codes(self, user_id: int) -> None:
+        """Invalidate all verification codes for user"""
 
-        self.session.add(code)
+        stmt = (
+            update(VerificationCode)
+            .where(VerificationCode.user_id == user_id, VerificationCode.used == False)
+            .values(used=True)
+        )
+        await self.session.execute(stmt)
         await self.session.commit()
-    
+
+
+    async def invalidate_reset_token(self, token: ResetToken) -> None:
+        """Invalidate reset token"""
+
+        token.used = True
+        await self.session.commit()
+        await self.session.refresh(token)
+
  
     # === Refresh token ===
 
