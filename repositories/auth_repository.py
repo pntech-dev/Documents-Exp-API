@@ -32,7 +32,10 @@ class AuthRepository:
     async def get_user_by_email(self, email: str) -> User | None:
         """Return User by email or None"""
 
-        query = select(User).where(User.email == email)
+        query = select(User).where(
+            User.email == email,
+            User.is_active == True
+        )
         result = await self.session.execute(query)
 
         return result.scalar_one_or_none()
@@ -86,13 +89,6 @@ class AuthRepository:
         token = await self.session.execute(query)
 
         return token.scalar_one_or_none()
-
-
-    async def save_verification_code(self, code: VerificationCode) -> None:
-        """Save verification code in db"""
-
-        self.session.add(code)
-        await self.session.commit()
 
 
     async def save_reset_token(self, token: ResetToken) -> None:
@@ -167,6 +163,64 @@ class AuthRepository:
         stmt = (
             update(RefreshToken)
             .where(RefreshToken.user_id == user_id, RefreshToken.used == False)
+            .values(used=True)
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+
+
+
+    """=== Email verifications ==="""
+    async def get_verification_code_by_email(self, email: str) -> VerificationCode | None:
+        """
+        Return verification code by email or None.
+        
+        Args:
+            email (str): Email address.
+            
+        Returns:
+            VerificationCode | None
+        """
+
+        query = select(VerificationCode).where(
+            VerificationCode.email == email,
+            VerificationCode.used == False,
+            VerificationCode.expires_at > datetime.datetime.utcnow()
+        )
+
+        result =await self.session.execute(query)
+
+        return result.scalar_one_or_none()
+
+    async def save_verification_code(self, code: VerificationCode) -> None:
+        """
+        Save verification code in database.
+        
+        Args:
+            code (VerificationCode): Verification code object.
+            
+        Returns:
+            None
+        """
+        self.session.add(code)
+        await self.session.commit()
+        await self.session.refresh(code)
+
+    async def invalidate_all_verifications_codes_by_email(self, email: str) -> None:
+        """
+        Invalidate all verification code by email.
+        
+        Args:
+            email (str): Email address.
+            
+        Returns:
+            None
+        """
+
+        stmt = (
+            update(VerificationCode)
+            .where(VerificationCode.email == email, VerificationCode.used == False)
             .values(used=True)
         )
         await self.session.execute(stmt)

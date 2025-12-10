@@ -12,10 +12,10 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False)
     department = Column(String(100), default=None, nullable=True)
 
+    is_active = Column(Boolean, default=False) # Reserving email for a new user
     is_admin = Column(Boolean, default=False)
 
     password_hash = Column(String, nullable=False)
     
     refresh_tokens = relationship('RefreshToken', back_populates='user')
-    verification_codes = relationship('VerificationCode', back_populates='user')
     reset_tokens = relationship('ResetToken', back_populates='user')

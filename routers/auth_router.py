@@ -1,18 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from schemas import *
 from db.deps import get_db
 from services import AuthService
-from schemas import (
-    UserSignUp, 
-    UserTokenResponse, 
-    UserLogin, 
-    UserResponse, 
-    RefreshTokenSchema, 
-    ForgotPasswordSchema, 
-    EmailConfirmSchema, 
-    ChangePasswordSchema
-)
 from utils import get_current_user
 
 
@@ -23,6 +14,9 @@ def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(db)
 
 
+
+"""=== Users ==="""
+
 @router.get("/user", response_model=UserResponse)
 async def get_user(
     service: AuthService = Depends(get_auth_service),
@@ -31,13 +25,8 @@ async def get_user(
     return await service.get_user(user_id=current_user.id)
 
 
-@router.post("/signup", response_model=UserTokenResponse)
-async def signup(
-    data: UserSignUp,
-    service: AuthService = Depends(get_auth_service),
-):
-    return await service.signup(data=data)
 
+"""=== Login ==="""
 
 @router.post("/login", response_model=UserTokenResponse)
 async def login(
@@ -47,6 +36,28 @@ async def login(
     return await service.login(data=data)
 
 
+
+"""=== Signup ==="""
+
+@router.post("/signup/send-code")
+async def send_code(
+    data: SignupEmailConfirmSchema,
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.signup_send_code(data=data)
+
+
+@router.patch("/signup/verify-code", response_model=UserTokenResponse)
+async def signup(
+    data: SignupSchema,
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.signup(data=data)
+
+
+
+"""=== Tokens ==="""
+
 @router.post("/refresh", response_model=UserTokenResponse)
 async def refresh(
     data: RefreshTokenSchema,
@@ -55,7 +66,8 @@ async def refresh(
     return await service.refresh_token(refresh_token=data.refresh_token)
 
 
-# Password
+
+"""=== Password ==="""
 
 @router.post("/forgot-password")
 async def forgot_password(

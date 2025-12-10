@@ -28,20 +28,6 @@ class UserSignUp(BaseModel):
         return password
 
 
-class UserResponse(BaseModel):
-    id: int
-    email: EmailStr
-    username: str | None = None
-    department: str | None = None
-
-
-class UserTokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
-    user: UserResponse
-
-
 class RefreshTokenSchema(BaseModel):
     refresh_token: str
 
@@ -75,3 +61,32 @@ class ChangePasswordSchema(BaseModel):
             raise ValueError("Password must contain at least one uppercase letter")
 
         return password
+    
+
+
+    
+"""=== User ==="""
+class UserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    username: str | None = None
+    department: str | None = None
+
+
+class UserTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: UserResponse
+    
+
+
+"""=== Signup ==="""
+class SignupSchema(BaseModel):
+    code: str
+    email: EmailStr
+    password: str
+
+
+class SignupEmailConfirmSchema(BaseModel):
+    email: EmailStr
