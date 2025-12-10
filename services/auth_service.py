@@ -48,6 +48,9 @@ class AuthService:
         # Create tokens
         tokens = await self._create_tokens(user=user)
 
+        # Invalidate all previous refresh tokens for user
+        await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
+
         # Create a refresh token record for the database
         refresh_token_record = RefreshToken(
             token=tokens[1],
@@ -87,6 +90,9 @@ class AuthService:
 
         # Create tokens
         tokens = await self._create_tokens(user=created_user)
+
+        # Invalidate all previous refresh tokens for user
+        await self.repo.invalidate_all_user_refresh_tokens(user_id=created_user.id)
 
         # Create a refresh token record for the database
         refresh_token_record = RefreshToken(
@@ -211,7 +217,7 @@ class AuthService:
     async def forgot_password(self, data: ForgotPasswordSchema) -> dict:
         """Forgot password"""
         user = await self.repo.get_user_by_email(email=data.email)
-        
+
         # To prevent user enumeration, we perform the logic only if the user
         # exists, but we return a generic message regardless.
         if user:

@@ -159,3 +159,15 @@ class AuthRepository:
     async def invalidate(self, token: RefreshToken) -> None:
         token.used = True
         await self.session.commit()
+
+
+    async def invalidate_all_user_refresh_tokens(self, user_id: int) -> None:
+        """Invalidate all refresh tokens for user"""
+
+        stmt = (
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.used == False)
+            .values(used=True)
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
