@@ -20,40 +20,30 @@ credentials_exception = HTTPException(
 )
 
 
-def create_access_token(
-        data: dict, 
-        expires_delta: timedelta | None = None
-) -> str:
-    """
-    Create and return access token
-    """
 
-    to_encode = data.copy()
-
-    now = datetime.now(timezone.utc)
-    
-    if expires_delta is None:
-        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    to_encode.update({"exp": now + expires_delta})
-
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM,
-    )
-
-    return encoded_jwt
-
+"""=== User ==="""
 
 async def get_current_user(
         token: str = Depends(oauth2_scheme),
         session: AsyncSession = Depends(get_db)
 ) -> User:
-    """
-    Check the token and return the user if the token is valid
-    """
+    """Authenticates and retrieves a user based on a JWT.
 
+    This function serves as a FastAPI dependency. It validates the provided
+    OAuth2 bearer token (JWT), decodes it to extract the user ID, and
+    fetches the corresponding user from the database.
+
+    Args:
+        token: The OAuth2 bearer token provided in the request headers.
+        session: The database session dependency.
+
+    Returns:
+        The authenticated User object corresponding to the token.
+
+    Raises:
+        HTTPException: If credentials cannot be validated (e.g., invalid
+            token format, signature, or non-existent user).
+    """
     try:
         payload = jwt.decode(
             token,
@@ -76,3 +66,34 @@ async def get_current_user(
         raise credentials_exception
 
     return user
+
+
+
+"""=== Token ==="""
+
+def create_token(data: dict, expires_delta: timedelta) -> str:
+    """Creates a new JWT with a specified payload and expiration.
+
+    Encodes a payload dictionary into a JSON Web Token (JWT) string, including
+    an expiration claim ('exp').
+
+    Args:
+        data: A dictionary containing the payload to encode in the token.
+        expires_delta: A timedelta object representing the token's lifespan.
+
+    Returns:
+        An encoded JWT string.
+    """
+    to_encode = data.copy()
+
+    now = datetime.now(timezone.utc)
+
+    to_encode.update({"exp": now + expires_delta})
+
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+    return encoded_jwt

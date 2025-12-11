@@ -1,20 +1,19 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-
 class RefreshTokenSchema(BaseModel):
     refresh_token: str
 
-
-class ForgotPasswordSchema(BaseModel):
+"""=== Reset Password ==="""
+class RequestPasswordResetSchema(BaseModel):
     email: EmailStr
 
 
-class EmailConfirmSchema(BaseModel):
+class VerefyResetCodeSchema(BaseModel):
     email: EmailStr
     code: str
 
 
-class ChangePasswordSchema(BaseModel):
+class ResetPasswordSchema(BaseModel):
     reset_token: str
     password: str = Field(min_length=8, max_length=72)
 

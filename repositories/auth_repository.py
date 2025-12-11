@@ -1,6 +1,5 @@
-import datetime
-
 from sqlalchemy import select, update
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, RefreshToken, VerificationCode, ResetToken
@@ -84,7 +83,7 @@ class AuthRepository:
 
         query = select(ResetToken).where(
             ResetToken.token == token,
-            ResetToken.expires_at > datetime.datetime.utcnow(),
+            ResetToken.expires_at > datetime.now(timezone.utc),
             ResetToken.used == False
         )
 
@@ -106,7 +105,7 @@ class AuthRepository:
         query = select(RefreshToken).where(
             RefreshToken.token == token,
             RefreshToken.used == False,
-            RefreshToken.expires_at > datetime.datetime.utcnow()
+            RefreshToken.expires_at > datetime.now(timezone.utc)
         )
 
         result = await self.session.execute(query)
@@ -201,7 +200,7 @@ class AuthRepository:
         query = select(VerificationCode).where(
             VerificationCode.email == email,
             VerificationCode.used == False,
-            VerificationCode.expires_at > datetime.datetime.utcnow()
+            VerificationCode.expires_at > datetime.now(timezone.utc)
         )
 
         result =await self.session.execute(query)

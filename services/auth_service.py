@@ -1,9 +1,26 @@
 from fastapi import HTTPException
-from datetime import timedelta, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timedelta, datetime, timezone
 
-from utils import *
-from schemas import *
+from utils import (
+    hash_token,
+    create_token,
+    hash_password,
+    verify_password,
+    create_reset_token,
+    generate_verification_code
+)
+from schemas import (
+    UserResponse,
+    UserTokenResponse,
+    LoginSchema,
+    SignupSchema,
+    SignupEmailConfirmSchema,
+    RequestPasswordResetSchema,
+    VerefyResetCodeSchema,
+    ResetPasswordSchema,
+    RefreshTokenSchema
+)
 from core.config import settings
 from repositories import AuthRepository
 from models import User, RefreshToken, VerificationCode, ResetToken
@@ -61,7 +78,7 @@ class AuthService:
         refresh_token_record = RefreshToken(
             token=tokens["refresh_token"],
             user_id=user.id,
-            expires_at=datetime.utcnow() + timedelta(
+            expires_at=datetime.now(timezone.utc) + timedelta(
                 minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
             )
         )
@@ -130,7 +147,10 @@ class AuthService:
         await self.repo.save_refresh_token(
             refresh_token=RefreshToken(
                 token=tokens["refresh_token"],
-                user_id=user.id
+                user_id=user.id,
+                expires_at=datetime.now(timezone.utc) + timedelta(
+                    minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
+                )
             )
         )
 
@@ -175,7 +195,7 @@ class AuthService:
         verification_code = VerificationCode(
             email=data.email,
             code_hash=code["code_hash"],
-            expires_at=datetime.utcnow() + timedelta(
+            expires_at=datetime.now(timezone.utc) + timedelta(
                 minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
             )
         )
@@ -199,7 +219,7 @@ class AuthService:
 
     """=== Reset password ==="""
 
-    async def request_password_reset(self, data: ForgotPasswordSchema) -> dict:
+    async def request_password_reset(self, data: RequestPasswordResetSchema) -> dict:
         """
         Initiates the password reset process.
 
@@ -233,7 +253,7 @@ class AuthService:
             verification_code = VerificationCode(
                 email=data.email,
                 code_hash=code['code_hash'],
-                expires_at=datetime.utcnow() + timedelta(
+                expires_at=datetime.now(timezone.utc) + timedelta(
                     minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
                 )
             )
@@ -245,7 +265,7 @@ class AuthService:
         return {"detail": "If an account with this email exists, a verification code has been sent."}
 
 
-    async def verify_reset_code(self, data: EmailConfirmSchema) -> dict:
+    async def verify_reset_code(self, data: VerefyResetCodeSchema) -> dict:
         """
         Verifies the password reset code.
 
@@ -295,7 +315,7 @@ class AuthService:
         token = ResetToken(
             user_id=user.id,
             token=token_hash,
-            expires_at=datetime.utcnow() + timedelta(
+            expires_at=datetime.now(timezone.utc) + timedelta(
                 minutes=settings.RESET_TOKEN_EXPIRE_MINUTES
             )
         )
@@ -308,7 +328,7 @@ class AuthService:
         return {"reset_token": reset_token}
 
 
-    async def reset_password(self, data: ChangePasswordSchema) -> dict:
+    async def reset_password(self, data: ResetPasswordSchema) -> dict:
         """
         Finalizes the password reset process.
 
@@ -353,7 +373,7 @@ class AuthService:
 
     """=== Tokens ==="""
 
-    async def refresh_token(self, provided_token: str) -> UserTokenResponse:
+    async def refresh_token(self, token: RefreshTokenSchema) -> UserTokenResponse:
         """
         Rotates the refresh token (Token Rotation).
 
@@ -361,14 +381,14 @@ class AuthService:
         refresh tokens, invalidating the used token.
 
         Args:
-            provided_token (str): The refresh token to be rotated.
+            token (RefreshTokenSchema): The refresh token to be rotated.
 
         Returns:
             UserTokenResponse: User data and a new set of tokens.
         """
 
         # Find the active token in the database.
-        token_from_db = await self.repo.get_active_token(token=provided_token)
+        token_from_db = await self.repo.get_active_token(token=token.refresh_token)
 
         # Use a single, clear error message to avoid leaking information
         # about whether a token exists but is expired, or never existed at all.
@@ -396,7 +416,7 @@ class AuthService:
         new_refresh_token = RefreshToken(
             token=new_tokens["refresh_token"],
             user_id=user.id,
-            expires_at=datetime.utcnow() + timedelta(
+            expires_at=datetime.now(timezone.utc) + timedelta(
                 minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
             )
         )
@@ -458,8 +478,11 @@ class AuthService:
         Returns:
             dict[str, str]: A dictionary containing 'access_token' and 'refresh_token'.
         """
-        access_token = create_access_token(data={"sub": str(user.id)})
-        refresh_token = create_access_token(
+        access_token = create_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        refresh_token = create_token(
             data={"sub": str(user.id)},
             expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
         )
