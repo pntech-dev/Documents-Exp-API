@@ -14,13 +14,20 @@ from utils import hash_password, create_access_token, verify_password
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.repo = AuthRepository(db)
     
+    
+    # ===============
+    # Public methods
+    # ===============
+
+
+    """=== Users ==="""
 
     async def get_user(self, user_id: int) -> UserResponse | None:
         """Return user by id"""
-
+        # Get user
         user = await self.repo.get_user_by_id(user_id=user_id)
         await self._check_http_error(
             condition=user is None,
@@ -28,6 +35,7 @@ class AuthService:
             msg="Not found"
         )
         
+        # Create response
         response = UserResponse(
             id=user.id,
             email=user.email,
@@ -61,12 +69,7 @@ class AuthService:
         )
 
         # Create new tokens
-        access_token = create_access_token(data={"sub": str(user.id)})
-        refresh_token = create_access_token(
-            data={"sub": str(user.id)},
-            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
-        )
-        tokens = [access_token, refresh_token]
+        tokens = await self._create_tokens(user=user)
 
         # Save new refresh token
         refresh_token = RefreshToken(
@@ -79,17 +82,7 @@ class AuthService:
         await self.repo.save_refresh_token(refresh_token=refresh_token)
 
         # Return refreshed tokens
-        response = UserTokenResponse(
-                access_token=tokens[0],
-                refresh_token=tokens[1],
-                token_type="bearer",
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    username=user.username,
-                    department=user.department
-                )
-            )
+        response = await self._create_token_response(tokens=tokens, user=user)
 
         return response
         
@@ -251,12 +244,7 @@ class AuthService:
         )
         
         # Create tokens
-        access_token = create_access_token(data={"sub": str(user.id)})
-        refresh_token = create_access_token(
-            data={"sub": str(user.id)},
-            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
-        )
-        tokens = [access_token, refresh_token]
+        tokens = await self._create_tokens(user=user)
 
         # Invalidate all previous refresh tokens for user
         await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
@@ -274,17 +262,7 @@ class AuthService:
         await self.repo.save_refresh_token(refresh_token=refresh_token_record)
 
         # Create response
-        response = UserTokenResponse(
-                access_token=tokens[0],
-                refresh_token=tokens[1],
-                token_type="bearer",
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    username=user.username,
-                    department=user.department
-                )
-            )
+        response = await self._create_token_response(tokens=tokens, user=user)
 
         return response
     
@@ -336,31 +314,18 @@ class AuthService:
         await self.repo.update_user(user=user)
 
         # Create tokens
-        access_token = create_access_token(data={"sub": str(user.id)})
-        refresh_token = create_access_token(
-            data={"sub": str(user.id)},
-            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
-        )
+        tokens = await self._create_tokens(user=user)
 
+        # Save refresh token
         await self.repo.save_refresh_token(
             refresh_token=RefreshToken(
-                token=refresh_token,
+                token=tokens[1],
                 user_id=user.id
             )
         )
 
         # Create response
-        response = UserTokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                username=user.username,
-                department=user.department
-            )
-        )
+        response = await self._create_token_response(tokens=tokens, user=user)
 
         return response
 
@@ -417,7 +382,70 @@ class AuthService:
         await self.repo.create_user(user=user)
         
         return {"detail": f"Verification code sent. CODE: {code}"}
+
+
+    # ===============
+    # Service methods
+    # ===============
+
+
+    """=== Responses """
+
+    async def _create_token_response(self, tokens: list, user: User) -> UserTokenResponse:
+        """
+        The function generates a response in the UserTokenResponse format.
+
+        Args:
+            tokens (list): List of access and refresh tokens.
+            user (User): User object.
+
+        Returns:
+            UserTokenResponse: Response in the UserTokenResponse format.
+        """
+        try:
+            response = UserTokenResponse(
+                access_token=tokens[0],
+                refresh_token=tokens[1],
+                token_type="bearer",
+                user=UserResponse(
+                    id=user.id,
+                    email=user.email,
+                    username=user.username,
+                    department=user.department
+                )
+            )
+
+            return response
+        
+        except Exception as e:
+            raise e
     
+
+
+    """=== Tokens ==="""
+
+    async def _create_tokens(self, user: User) -> list:
+        """
+        Creates access and refresh tokens
+
+        Args:
+            user (User): User object
+
+        Returns:
+            list: List of access and refresh tokens
+        """
+        try:
+            access_token = create_access_token(data={"sub": str(user.id)})
+            refresh_token = create_access_token(
+                data={"sub": str(user.id)},
+                expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+            )
+
+            return [access_token, refresh_token]
+
+        except Exception as e:
+            raise e
+
 
 
     """=== Errors ==="""
@@ -436,8 +464,12 @@ class AuthService:
             status_code (int): HTTP status code for the exception.
             msg (str): Detail message for the exception.
         """
-        if condition:
-            raise HTTPException(
-                status_code=status_code,
-                detail=msg
-            )
+        try:
+            if condition:
+                raise HTTPException(
+                    status_code=status_code,
+                    detail=msg
+                )
+            
+        except Exception as e:
+            raise e
