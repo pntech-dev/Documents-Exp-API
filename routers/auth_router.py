@@ -30,7 +30,7 @@ async def get_user(
 
 @router.post("/login", response_model=UserTokenResponse)
 async def login(
-    data: UserLogin,
+    data: LoginSchema,
     service: AuthService = Depends(get_auth_service),
 ):
     return await service.login(data=data)

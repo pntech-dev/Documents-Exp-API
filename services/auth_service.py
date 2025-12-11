@@ -16,49 +16,6 @@ from utils import hash_password, create_access_token, verify_password
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.repo = AuthRepository(db)
-
-
-    async def login(self, data: UserLogin) -> UserTokenResponse | None:
-        """Login user and return token"""
-
-        # Check if user exists
-        user = await self.repo.get_user_by_email(email=data.email)
-        if user is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Email or password is incorrect"
-            )
-        
-        # Check if password is correct
-        is_password_correct = verify_password(data.password, user.password_hash)
-        if not is_password_correct:
-            raise HTTPException(
-                status_code=400,
-                detail="Email or password is incorrect"
-            )
-        
-        # Create tokens
-        tokens = await self._create_tokens(user=user)
-
-        # Invalidate all previous refresh tokens for user
-        await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
-
-        # Create a refresh token record for the database
-        refresh_token_record = RefreshToken(
-            token=tokens[1],
-            user_id=user.id,
-            expires_at=datetime.utcnow() + timedelta(
-                minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
-            )
-        )
-
-        # Save the refresh token record
-        await self.repo.save_refresh_token(refresh_token=refresh_token_record)
-
-        # Create response
-        response = await self._create_token_response(user=user, tokens=tokens)
-
-        return response
     
 
     async def get_user(self, user_id: int) -> UserResponse | None:
@@ -100,7 +57,12 @@ class AuthService:
             )
 
         # Create new tokens
-        tokens = await self._create_tokens(user=user)
+        access_token = create_access_token(data={"sub": str(user.id)})
+        refresh_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        )
+        tokens = [access_token, refresh_token]
 
         # Save new refresh token
         refresh_token = RefreshToken(
@@ -113,37 +75,7 @@ class AuthService:
         await self.repo.save_refresh_token(refresh_token=refresh_token)
 
         # Return refreshed tokens
-        response = await self._create_token_response(user=user, tokens=tokens)
-
-        return response
-    
-
-    async def _create_tokens(self, user: User) -> list[str]:
-        """Create access and refresh tokens"""
-
-        try:
-            access_token = create_access_token(data={"sub": str(user.id)})
-            refresh_token = create_access_token(
-                data={"sub": str(user.id)},
-                expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
-            )
-
-            return [access_token, refresh_token]
-        
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    
-
-    async def _create_token_response(
-            self, 
-            user: User, 
-            tokens: list[str]
-    ) -> UserTokenResponse:
-        
-        """Create token response"""
-
-        try:
-            response = UserTokenResponse(
+        response = UserTokenResponse(
                 access_token=tokens[0],
                 refresh_token=tokens[1],
                 token_type="bearer",
@@ -155,13 +87,11 @@ class AuthService:
                 )
             )
 
-            return response
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        return response
         
 
-    # Password
+
+    """=== Password ==="""
 
     async def forgot_password(self, data: ForgotPasswordSchema) -> dict:
         """Forgot password"""
@@ -277,6 +207,85 @@ class AuthService:
             )
         
         return True
+    
+
+    
+    """=== Login ==="""
+
+    async def login(self, data: LoginSchema) -> UserTokenResponse | None:
+        """
+        Login user and return tokens.
+        The function receives login information, 
+        receives the user by the received email, 
+        verifies the password and creates tokens.
+        
+        Args:
+            data (LoginSchema): Data with email and password.
+
+        Returns:
+            UserTokenResponse: User data and tokens
+        """
+
+        # Check if user exists
+        user = await self.repo.get_user_by_email(email=data.email)
+        if user is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Email or password is incorrect"
+            )
+        
+        # Check if user is_active
+        if not user.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail="Email or password is incorrect"
+            )
+        
+        # Check if password is correct
+        is_password_correct = verify_password(data.password, user.password_hash)
+        if not is_password_correct:
+            raise HTTPException(
+                status_code=400,
+                detail="Email or password is incorrect"
+            )
+        
+        # Create tokens
+        access_token = create_access_token(data={"sub": str(user.id)})
+        refresh_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        )
+        tokens = [access_token, refresh_token]
+
+        # Invalidate all previous refresh tokens for user
+        await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
+
+        # Create a refresh token record for the database
+        refresh_token_record = RefreshToken(
+            token=tokens[1],
+            user_id=user.id,
+            expires_at=datetime.utcnow() + timedelta(
+                minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
+            )
+        )
+
+        # Save the refresh token record
+        await self.repo.save_refresh_token(refresh_token=refresh_token_record)
+
+        # Create response
+        response = UserTokenResponse(
+                access_token=tokens[0],
+                refresh_token=tokens[1],
+                token_type="bearer",
+                user=UserResponse(
+                    id=user.id,
+                    email=user.email,
+                    username=user.username,
+                    department=user.department
+                )
+            )
+
+        return response
     
 
 
