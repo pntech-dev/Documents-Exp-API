@@ -1,11 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-
 class RefreshTokenSchema(BaseModel):
     refresh_token: str
 

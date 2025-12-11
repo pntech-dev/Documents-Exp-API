@@ -17,7 +17,7 @@ class AuthService:
     def __init__(self, db: AsyncSession) -> None:
         self.repo = AuthRepository(db)
     
-    
+
     # ===============
     # Public methods
     # ===============
@@ -44,51 +44,191 @@ class AuthService:
         )
 
         return response
-    
-
-    async def refresh_token(self, refresh_token: str) -> UserTokenResponse:
-        "Refresh access and refresh tokens"
-
-        # Get the refresh token from the database
-        db_refresh_token = await self.repo.get_active_token(token=refresh_token)
-        await self._check_http_error(
-            condition=db_refresh_token is None,
-            status_code=401,
-            msg="Refresh token is invalid or has been used"
-        )
         
-        # Invalidate the old refresh token
-        await self.repo.invalidate(token=db_refresh_token)
 
-        # Get the associated user
-        user = await self.repo.get_user_by_id(user_id=db_refresh_token.user_id)  
+    
+    """=== Login ==="""
+
+    async def login(self, data: LoginSchema) -> UserTokenResponse | None:
+        """
+        Login user and return tokens.
+        The function receives login information, 
+        receives the user by the received email, 
+        verifies the password and creates tokens.
+        
+        Args:
+            data (LoginSchema): Data with email and password.
+
+        Returns:
+            UserTokenResponse: User data and tokens
+        """
+
+        # Check if user exists
+        user = await self.repo.get_user_by_email(email=data.email)
         await self._check_http_error(
             condition=user is None,
-            status_code=401,
-            msg="User associated with the token not found"
+            status_code=400,
+            msg="Email or password is incorrect"
         )
 
-        # Create new tokens
+        # Check if user is_active
+        await self._check_http_error(
+            condition=not user.is_active,
+            status_code=400,
+            msg="Email or password is incorrect"
+        )
+        
+        # Check if password is correct
+        is_password_correct = verify_password(data.password, user.password_hash)
+        await self._check_http_error(
+            condition=not is_password_correct,
+            status_code=400,
+            msg="Email or password is incorrect"
+        )
+        
+        # Create tokens
         tokens = await self._create_tokens(user=user)
 
-        # Save new refresh token
-        refresh_token = RefreshToken(
-            token=tokens[1],
+        # Invalidate all previous refresh tokens for user
+        await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
+
+        # Create a refresh token record for the database
+        refresh_token_record = RefreshToken(
+            token=tokens["refresh_token"],
             user_id=user.id,
             expires_at=datetime.utcnow() + timedelta(
                 minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
             )
         )
-        await self.repo.save_refresh_token(refresh_token=refresh_token)
 
-        # Return refreshed tokens
+        # Save the refresh token record
+        await self.repo.save_refresh_token(refresh_token=refresh_token_record)
+
+        # Create response
         response = await self._create_token_response(tokens=tokens, user=user)
 
         return response
+    
+
+
+    """=== Signup ==="""
+
+    async def signup(self, data: SignupSchema) -> UserTokenResponse:
+        """
+        Registering a new user
+        The function verifies the correctness of the email verification code, 
+        modifies the empty (reserved) account of a new user, 
+        and creates access codes.
+
+        Args:
+            data (SignupSchema): Data with new user verification code, email and password.
+
+        Returns:
+            UserTokenResponse: User data and tokens
+        """
+    
+        # Check verification code
+        code = await self.repo.get_verification_code_by_email(email=data.email)
+        await self._check_http_error(
+            condition=not code,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
         
+        # Check if code is correct
+        is_code_correct = verify_password(data.code, code.code_hash)
+        await self._check_http_error(
+            condition=not is_code_correct,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
+        
+        # Get reserver user profile
+        user = await self.repo.get_user_by_email(email=data.email)
+        
+        # Invalidate all verifications codes
+        await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
+
+        # Update user data
+        password_hash = hash_password(data.password)
+
+        user.password_hash = password_hash
+
+        await self.repo.update_user(user=user)
+
+        # Create tokens
+        tokens = await self._create_tokens(user=user)
+
+        # Save refresh token
+        await self.repo.save_refresh_token(
+            refresh_token=RefreshToken(
+                token=tokens["refresh_token"],
+                user_id=user.id
+            )
+        )
+
+        # Create response
+        response = await self._create_token_response(tokens=tokens, user=user)
+
+        return response
 
 
-    """=== Password ==="""
+    async def signup_send_code(self, data: SignupEmailConfirmSchema) -> dict:
+        """
+        Sending the email verification code for the new registering user.
+        The function checks for a user with such an email, 
+        reserves the mail (creates an empty account), 
+        and creates a verification code
+
+        Args:
+            data (SignupEmailConfirmSchema): Data with new user email.
+
+        Returns:
+            dict: Detail message.
+        """
+
+        # Check if a user with the same email address already exists
+        user = await self.repo.get_user_by_email(email=data.email)
+        await self._check_http_error(
+            condition=user is not None,
+            status_code=400,
+            msg="User with this email already exists"
+        )
+        
+        # Create verification code
+        code = randint(100000, 999999)
+        code_hash = hash_password(str(code))
+
+        # Invalidate all verifications codes
+        await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
+
+        # Save verification code
+        verification_code = VerificationCode(
+            email=data.email,
+            code_hash=code_hash,
+            expires_at=datetime.utcnow() + timedelta(
+                minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+            )
+        )
+
+        await self.repo.save_verification_code(code=verification_code)
+
+        # Send email with verification code (=== TEMP ===)
+        print(f"Verification code: {code}")
+
+        # Reserve user email (Create empty profile)
+        user = User(
+            email=data.email,
+            password_hash=""
+        )
+
+        await self.repo.create_user(user=user)
+        
+        return {"detail": f"Verification code sent. CODE: {code}"}
+    
+
+
+    """=== Reset password ==="""
 
     async def forgot_password(self, data: ForgotPasswordSchema) -> dict:
         """Forgot password"""
@@ -203,185 +343,63 @@ class AuthService:
         return {"detail": "Password changed"}
     
 
-    
-    """=== Login ==="""
 
-    async def login(self, data: LoginSchema) -> UserTokenResponse | None:
+    """=== Tokens ==="""
+
+    async def refresh_token(self, provided_token: str) -> UserTokenResponse:
         """
-        Login user and return tokens.
-        The function receives login information, 
-        receives the user by the received email, 
-        verifies the password and creates tokens.
-        
+        The function receives a refresh token, checks its validity.
+        If the token is valid, it marks it as "used". 
+        A new pair of tokens (an access token and refresh token) is created. 
+        A new refresh token is saved in the database and associated with the user. 
+        User data and the new tokens are then returned.
+
         Args:
-            data (LoginSchema): Data with email and password.
+            provided_token (str): Refresh token.
 
         Returns:
             UserTokenResponse: User data and tokens
         """
 
-        # Check if user exists
-        user = await self.repo.get_user_by_email(email=data.email)
+        # 1. Find the active token in the database.
+        token_from_db = await self.repo.get_active_token(token=provided_token)
+
+        # Use a single, clear error message to avoid leaking information
+        # about whether a token exists but is expired, or never existed at all.
+        await self._check_http_error(
+            condition=token_from_db is None,
+            status_code=401,
+            msg="Refresh token is invalid or has expired"
+        )
+        
+        # 2. Immediately invalidate the old refresh token to prevent reuse (Token Rotation).
+        await self.repo.invalidate(token=token_from_db)
+
+        # 3. Get the user associated with the now-invalidated token.
+        user = await self.repo.get_user_by_id(user_id=token_from_db.user_id)
         await self._check_http_error(
             condition=user is None,
-            status_code=400,
-            msg="Email or password is incorrect"
+            status_code=401, # 401 Unauthorized, as the token is effectively invalid if the user is gone.
+            msg="User associated with the token not found"
         )
 
-        # Check if user is_active
-        await self._check_http_error(
-            condition=not user.is_active,
-            status_code=400,
-            msg="Email or password is incorrect"
-        )
-        
-        # Check if password is correct
-        is_password_correct = verify_password(data.password, user.password_hash)
-        await self._check_http_error(
-            condition=not is_password_correct,
-            status_code=400,
-            msg="Email or password is incorrect"
-        )
-        
-        # Create tokens
-        tokens = await self._create_tokens(user=user)
+        # 4. Create a new pair of tokens.
+        new_tokens = await self._create_tokens(user=user)
 
-        # Invalidate all previous refresh tokens for user
-        await self.repo.invalidate_all_user_refresh_tokens(user_id=user.id)
-
-        # Create a refresh token record for the database
-        refresh_token_record = RefreshToken(
-            token=tokens[1],
+        # 5. Save the new refresh token to the database.
+        new_refresh_token = RefreshToken(
+            token=new_tokens["refresh_token"],
             user_id=user.id,
             expires_at=datetime.utcnow() + timedelta(
                 minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
             )
         )
+        await self.repo.save_refresh_token(refresh_token=new_refresh_token)
 
-        # Save the refresh token record
-        await self.repo.save_refresh_token(refresh_token=refresh_token_record)
-
-        # Create response
-        response = await self._create_token_response(tokens=tokens, user=user)
+        # 6. Build and return the final response.
+        response = await self._create_token_response(tokens=new_tokens, user=user)
 
         return response
-    
-
-
-    """=== Signup ==="""
-
-    async def signup(self, data: SignupSchema) -> UserTokenResponse:
-        """
-        Registering a new user
-        The function verifies the correctness of the email verification code, 
-        modifies the empty (reserved) account of a new user, 
-        and creates access codes.
-
-        Args:
-            data (SignupSchema): Data with new user verification code, email and password.
-
-        Returns:
-            UserTokenResponse: User data and tokens
-        """
-    
-        # Check verification code
-        code = await self.repo.get_verification_code_by_email(email=data.email)
-        await self._check_http_error(
-            condition=not code,
-            status_code=400,
-            msg="Verification code is incorrect or has expired"
-        )
-        
-        # Check if code is correct
-        is_code_correct = verify_password(data.code, code.code_hash)
-        await self._check_http_error(
-            condition=not is_code_correct,
-            status_code=400,
-            msg="Verification code is incorrect or has expired"
-        )
-        
-        # Get reserver user profile
-        user = await self.repo.get_user_by_email(email=data.email)
-        
-        # Invalidate all verifications codes
-        await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
-
-        # Update user data
-        password_hash = hash_password(data.password)
-
-        user.password_hash = password_hash
-
-        await self.repo.update_user(user=user)
-
-        # Create tokens
-        tokens = await self._create_tokens(user=user)
-
-        # Save refresh token
-        await self.repo.save_refresh_token(
-            refresh_token=RefreshToken(
-                token=tokens[1],
-                user_id=user.id
-            )
-        )
-
-        # Create response
-        response = await self._create_token_response(tokens=tokens, user=user)
-
-        return response
-
-
-    async def signup_send_code(self, data: SignupEmailConfirmSchema) -> dict:
-        """
-        Sending the email verification code for the new registering user.
-        The function checks for a user with such an email, 
-        reserves the mail (creates an empty account), 
-        and creates a verification code
-
-        Args:
-            data (SignupEmailConfirmSchema): Data with new user email.
-
-        Returns:
-            dict: Detail message.
-        """
-
-        # Check if a user with the same email address already exists
-        user = await self.repo.get_user_by_email(email=data.email)
-        await self._check_http_error(
-            condition=user is not None,
-            status_code=400,
-            msg="User with this email already exists"
-        )
-        
-        # Create verification code
-        code = randint(100000, 999999)
-        code_hash = hash_password(str(code))
-
-        # Invalidate all verifications codes
-        await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
-
-        # Save verification code
-        verification_code = VerificationCode(
-            email=data.email,
-            code_hash=code_hash,
-            expires_at=datetime.utcnow() + timedelta(
-                minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
-            )
-        )
-
-        await self.repo.save_verification_code(code=verification_code)
-
-        # Send email with verification code (=== TEMP ===)
-        print(f"Verification code: {code}")
-
-        # Reserve user email (Create empty profile)
-        user = User(
-            email=data.email,
-            password_hash=""
-        )
-
-        await self.repo.create_user(user=user)
-        
-        return {"detail": f"Verification code sent. CODE: {code}"}
 
 
     # ===============
@@ -391,60 +409,56 @@ class AuthService:
 
     """=== Responses """
 
-    async def _create_token_response(self, tokens: list, user: User) -> UserTokenResponse:
+    async def _create_token_response(
+        self, 
+        tokens: dict[str, str], 
+        user: User
+    ) -> UserTokenResponse:
         """
         The function generates a response in the UserTokenResponse format.
 
         Args:
-            tokens (list): List of access and refresh tokens.
+            tokens (dict[str, str]): Dictionary of access and refresh tokens.
             user (User): User object.
 
         Returns:
             UserTokenResponse: Response in the UserTokenResponse format.
         """
-        try:
-            response = UserTokenResponse(
-                access_token=tokens[0],
-                refresh_token=tokens[1],
-                token_type="bearer",
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    username=user.username,
-                    department=user.department
-                )
+        response = UserTokenResponse(
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            token_type="bearer",
+            user=UserResponse(
+                id=user.id,
+                email=user.email,
+                username=user.username,
+                department=user.department
             )
+        )
 
-            return response
-        
-        except Exception as e:
-            raise e
+        return response
     
 
 
     """=== Tokens ==="""
 
-    async def _create_tokens(self, user: User) -> list:
+    async def _create_tokens(self, user: User) -> dict[str, str]:
         """
-        Creates access and refresh tokens
+        Creates access and refresh tokens and returns them as a dictionary.
 
         Args:
             user (User): User object
 
         Returns:
-            list: List of access and refresh tokens
+            dict[str, str]: A dictionary containing 'access_token' and 'refresh_token'.
         """
-        try:
-            access_token = create_access_token(data={"sub": str(user.id)})
-            refresh_token = create_access_token(
-                data={"sub": str(user.id)},
-                expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
-            )
+        access_token = create_access_token(data={"sub": str(user.id)})
+        refresh_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        )
 
-            return [access_token, refresh_token]
-
-        except Exception as e:
-            raise e
+        return {"access_token": access_token, "refresh_token": refresh_token}
 
 
 
