@@ -38,14 +38,7 @@ class AuthService:
         # Check if user exists
         user = await self.repo.get_user_by_email(email=data.email)
         await self._check_http_error(
-            condition=user is None,
-            status_code=400,
-            msg="Email or password is incorrect"
-        )
-
-        # Check if user is_active
-        await self._check_http_error(
-            condition=not user.is_active,
+            condition=user is None or not user.is_active,
             status_code=400,
             msg="Email or password is incorrect"
         )
@@ -117,13 +110,18 @@ class AuthService:
         
         # Get reserver user profile
         user = await self.repo.get_user_by_email(email=data.email)
+        await self._check_http_error(
+            condition=user is None,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
 
         # Update user data
         password_hash = hash_password(data.password)
 
         user.password_hash = password_hash
 
-        await self.repo.update_user(user=user)
+        await self.repo.save_user(user=user)
 
         # Create tokens
         tokens = await self._create_tokens(user=user)
@@ -193,7 +191,7 @@ class AuthService:
             password_hash=""
         )
 
-        await self.repo.create_user(user=user)
+        await self.repo.save_user(user=user)
         
         return {"detail": f"Verification code sent. CODE: {code["code"]}"}
     
@@ -216,6 +214,11 @@ class AuthService:
         """
         # Get user by email
         user = await self.repo.get_user_by_email(email=data.email)
+        await self._check_http_error(
+            condition=user is None or not user.is_active,
+            status_code=400,
+            msg="User with this email does not exist"
+        )
 
         # To prevent user enumeration, we perform the logic only if the user
         # exists, but we return a generic message regardless.
@@ -261,7 +264,7 @@ class AuthService:
         # we can't proceed, but we must return an error that is indistinguishable
         # from a failed code verification to avoid leaking information.
         await self._check_http_error(
-            condition=not user,
+            condition=user is None or not user.is_active,
             status_code=400,
             msg="Verification code is incorrect or has expired"
         )
@@ -339,7 +342,7 @@ class AuthService:
 
         # Update user
         user.password_hash = password_hash
-        await self.repo.update_user(user=user)
+        await self.repo.save_user(user=user)
 
         # Invalidate reset token
         await self.repo.invalidate_reset_token(token=token)
@@ -376,7 +379,7 @@ class AuthService:
         )
         
         # Immediately invalidate the old refresh token to prevent reuse (Token Rotation).
-        await self.repo.invalidate(token=token_from_db)
+        await self.repo.invalidate_refresh_token(token=token_from_db)
 
         # Get the user associated with the now-invalidated token.
         user = await self.repo.get_user_by_id(user_id=token_from_db.user_id)
