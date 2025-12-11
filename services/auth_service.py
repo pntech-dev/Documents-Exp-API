@@ -22,7 +22,11 @@ class AuthService:
         """Return user by id"""
 
         user = await self.repo.get_user_by_id(user_id=user_id)
-        await self._check_404_error(object=user, detail="Not found")
+        await self._check_http_error(
+            condition=user is None,
+            status_code=404,
+            msg="Not found"
+        )
         
         response = UserResponse(
             id=user.id,
@@ -39,22 +43,22 @@ class AuthService:
 
         # Get the refresh token from the database
         db_refresh_token = await self.repo.get_active_token(token=refresh_token)
-        if db_refresh_token is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Refresh token is invalid or has been used"
-            )
+        await self._check_http_error(
+            condition=db_refresh_token is None,
+            status_code=401,
+            msg="Refresh token is invalid or has been used"
+        )
         
         # Invalidate the old refresh token
         await self.repo.invalidate(token=db_refresh_token)
 
         # Get the associated user
-        user = await self.repo.get_user_by_id(user_id=db_refresh_token.user_id)
-        if user is None:
-            raise HTTPException(
-                status_code=401,
-                detail="User associated with the token not found"
-            )
+        user = await self.repo.get_user_by_id(user_id=db_refresh_token.user_id)  
+        await self._check_http_error(
+            condition=user is None,
+            status_code=401,
+            msg="User associated with the token not found"
+        )
 
         # Create new tokens
         access_token = create_access_token(data={"sub": str(user.id)})
@@ -131,27 +135,27 @@ class AuthService:
         # To prevent user enumeration, we check for the user first. If they don't exist,
         # we can't proceed, but we must return an error that is indistinguishable
         # from a failed code verification to avoid leaking information.
-        if not user:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification code is incorrect or has expired"
-            )
+        await self._check_http_error(
+            condition=not user,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
         
         # Get code hash
         code = await self.repo.get_verification_code_by_email(email=data.email)
-        if not code:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification code is incorrect or has expired"
-            )
+        await self._check_http_error(
+            condition=not code,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
 
         # Check if code is correct
         is_code_correct = verify_password(data.code, code.code_hash)
-        if not is_code_correct:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification code is incorrect or has expired"
-            )
+        await self._check_http_error(
+            condition=not is_code_correct,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
         
         # Invalidate code
         await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
@@ -179,11 +183,19 @@ class AuthService:
         # Get reset token
         token_hash = hashlib.sha256(data.reset_token.encode('utf-8')).hexdigest()
         token = await self.repo.get_reset_token(token=token_hash)
-        self._check_404_error(object=token, detail="Not found")
+        await self._check_http_error(
+            condition=token is None,
+            status_code=404,
+            msg="Not found"
+        )
         
         # Get user
         user = await self.repo.get_user_by_id(user_id=token.user_id)
-        self._check_404_error(object=user, detail="Not found")
+        await self._check_http_error(
+            condition=user is None,
+            status_code=404,
+            msg="Not found"
+        )
         
         # Create password hash
         password_hash = hash_password(data.password)
@@ -196,17 +208,6 @@ class AuthService:
         await self.repo.invalidate_reset_token(token=token)
 
         return {"detail": "Password changed"}
-    
-
-    async def _check_404_error(self, object, detail: str) -> bool:
-        """Check if object exists"""
-        if object is None:
-            raise HTTPException(
-                status_code=404,
-                detail=detail
-            )
-        
-        return True
     
 
     
@@ -228,26 +229,26 @@ class AuthService:
 
         # Check if user exists
         user = await self.repo.get_user_by_email(email=data.email)
-        if user is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Email or password is incorrect"
-            )
-        
+        await self._check_http_error(
+            condition=user is None,
+            status_code=400,
+            msg="Email or password is incorrect"
+        )
+
         # Check if user is_active
-        if not user.is_active:
-            raise HTTPException(
-                status_code=400,
-                detail="Email or password is incorrect"
-            )
+        await self._check_http_error(
+            condition=not user.is_active,
+            status_code=400,
+            msg="Email or password is incorrect"
+        )
         
         # Check if password is correct
         is_password_correct = verify_password(data.password, user.password_hash)
-        if not is_password_correct:
-            raise HTTPException(
-                status_code=400,
-                detail="Email or password is incorrect"
-            )
+        await self._check_http_error(
+            condition=not is_password_correct,
+            status_code=400,
+            msg="Email or password is incorrect"
+        )
         
         # Create tokens
         access_token = create_access_token(data={"sub": str(user.id)})
@@ -307,20 +308,19 @@ class AuthService:
     
         # Check verification code
         code = await self.repo.get_verification_code_by_email(email=data.email)
-        if not code:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification code is incorrect or has expired"
-
-            )
+        await self._check_http_error(
+            condition=not code,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
         
         # Check if code is correct
         is_code_correct = verify_password(data.code, code.code_hash)
-        if not is_code_correct:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification code is incorrect or has expired"
-            )
+        await self._check_http_error(
+            condition=not is_code_correct,
+            status_code=400,
+            msg="Verification code is incorrect or has expired"
+        )
         
         # Get reserver user profile
         user = await self.repo.get_user_by_email(email=data.email)
@@ -381,11 +381,11 @@ class AuthService:
 
         # Check if a user with the same email address already exists
         user = await self.repo.get_user_by_email(email=data.email)
-        if user:
-            raise HTTPException(
-                status_code=400,
-                detail="User with this email already exists"
-            )
+        await self._check_http_error(
+            condition=user is not None,
+            status_code=400,
+            msg="User with this email already exists"
+        )
         
         # Create verification code
         code = randint(100000, 999999)
@@ -416,5 +416,28 @@ class AuthService:
 
         await self.repo.create_user(user=user)
         
-
         return {"detail": f"Verification code sent. CODE: {code}"}
+    
+
+
+    """=== Errors ==="""
+
+    async def _check_http_error(
+            self,
+            condition: bool,
+            status_code: int,
+            msg: str,
+    ) -> None:
+        """
+        Raise HTTPException if the condition is True.
+
+        Args:
+            condition (bool): The condition to check.
+            status_code (int): HTTP status code for the exception.
+            msg (str): Detail message for the exception.
+        """
+        if condition:
+            raise HTTPException(
+                status_code=status_code,
+                detail=msg
+            )
