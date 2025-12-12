@@ -99,8 +99,8 @@ class AuthService:
         """
         Finalizes the user registration process.
 
-        Verifies the provided signup code, sets the user's password on the 
-        pre-registered account, and issues the first pair of tokens.
+        Verifies the provided signup code, creates the user account, 
+        and issues the first pair of tokens.
 
         Args:
             data (SignupSchema): Email, verification code, and new password.
@@ -125,19 +125,13 @@ class AuthService:
             msg="Verification code is incorrect or has expired"
         )
         
-        # Get reserver user profile
-        user = await self.repo.get_user_by_email(email=data.email)
-        await self._check_http_error(
-            condition=user is None,
-            status_code=400,
-            msg="Verification code is incorrect or has expired"
-        )
-
-        # Update user data
+        # Create user
         password_hash = hash_password(data.password)
-
-        user.password_hash = password_hash
-        user.is_active = True
+        user = User(
+            email=data.email,
+            password_hash=password_hash,
+            is_active=True
+        )
 
         await self.repo.save_user(user=user)
 
@@ -168,8 +162,7 @@ class AuthService:
         """
         Initiates the signup process for a new user.
 
-        Checks if the email is available, creates a temporary user profile to 
-        reserve the email, and sends a verification code.
+        Checks if the email is available and sends a verification code.
 
         Args:
             data (SignupEmailConfirmSchema): The new user's email.
@@ -181,7 +174,7 @@ class AuthService:
         # Check if a user with the same email address already exists
         user = await self.repo.get_user_by_email(email=data.email)
         await self._check_http_error(
-            condition=user is not None,
+            condition=user is not None and user.is_active,
             status_code=400,
             msg="User with this email already exists"
         )
@@ -205,14 +198,6 @@ class AuthService:
 
         # Send email with verification code (=== TEMP ===)
         print(f"Verification code: {code.get('code')}")
-
-        # Reserve user email (Create empty profile)
-        user = User(
-            email=data.email,
-            password_hash=""
-        )
-
-        await self.repo.save_user(user=user)
         
         return {"detail": f"Verification code sent. CODE: {code.get('code')}"}
     

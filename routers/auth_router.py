@@ -45,7 +45,7 @@ async def signup(
 
 """=== Tokens ==="""
 
-@router.post("token/refresh", response_model=UserTokenResponse)
+@router.post("/token/refresh", response_model=UserTokenResponse)
 async def refresh(
     data: RefreshTokenSchema,
     service: AuthService = Depends(get_auth_service),
@@ -56,7 +56,7 @@ async def refresh(
 
 """=== Password ==="""
 
-@router.post("forgot-password/request-reset")
+@router.post("/forgot-password/request-reset")
 async def request_password_reset(
     data: RequestPasswordResetSchema,
     service: AuthService = Depends(get_auth_service),
@@ -64,7 +64,7 @@ async def request_password_reset(
     return await service.request_password_reset(data=data)
 
 
-@router.post("forgot-password/confirm-email")
+@router.post("/forgot-password/confirm-email")
 async def verify_reset_code(
     data: VerefyResetCodeSchema,
     service: AuthService = Depends(get_auth_service),
@@ -72,7 +72,7 @@ async def verify_reset_code(
     return await service.verify_reset_code(data=data)
 
 
-@router.patch("forgot-password/reset-password")
+@router.patch("/forgot-password/reset-password")
 async def reset_password(
     data: ResetPasswordSchema,
     service: AuthService = Depends(get_auth_service),
