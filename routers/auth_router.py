@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from schemas import *
 from db.deps import get_db
 from services import AuthService
+from utils import get_current_user
 
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -11,6 +12,16 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(db)
+
+
+"""=== User ==="""
+
+@router.get("/user", response_model=UserResponse)
+async def get_user(
+    user: UserResponse = Depends(get_current_user),
+):
+    return user
+
 
 
 """=== Login ==="""
