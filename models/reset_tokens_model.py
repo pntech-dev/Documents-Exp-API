@@ -9,8 +9,8 @@ class ResetToken(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     token = Column(String, nullable=True, unique=True)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
-    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
 
     used = Column(Boolean, default=False)
 

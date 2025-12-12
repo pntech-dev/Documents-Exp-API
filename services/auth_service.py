@@ -137,6 +137,7 @@ class AuthService:
         password_hash = hash_password(data.password)
 
         user.password_hash = password_hash
+        user.is_active = True
 
         await self.repo.save_user(user=user)
 
@@ -203,7 +204,7 @@ class AuthService:
         await self.repo.save_verification_code(code=verification_code)
 
         # Send email with verification code (=== TEMP ===)
-        print(f"Verification code: {code["code"]}")
+        print(f"Verification code: {code.get('code')}")
 
         # Reserve user email (Create empty profile)
         user = User(
@@ -213,7 +214,7 @@ class AuthService:
 
         await self.repo.save_user(user=user)
         
-        return {"detail": f"Verification code sent. CODE: {code["code"]}"}
+        return {"detail": f"Verification code sent. CODE: {code.get('code')}"}
     
 
 
@@ -243,6 +244,9 @@ class AuthService:
         # To prevent user enumeration, we perform the logic only if the user
         # exists, but we return a generic message regardless.
         if user:
+            # Invalidate all previous verification codes for user
+            await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
+
             # Create email verification code
             code = generate_verification_code()
 
@@ -259,10 +263,7 @@ class AuthService:
             )
             await self.repo.save_verification_code(code=verification_code)
 
-            # Invalidate all previous verification codes for user
-            await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
-
-        return {"detail": "If an account with this email exists, a verification code has been sent."}
+        return {"detail": f"If an account with this email exists, a verification code has been sent. Code: {code['code']}"}
 
 
     async def verify_reset_code(self, data: VerefyResetCodeSchema) -> dict:
