@@ -7,6 +7,7 @@ class DepartmentResponse(BaseModel):
 
     id: int
     name: str
+    documents_count: int
 
 
 class DepartmentsResponse(BaseModel):
@@ -20,6 +21,7 @@ class CategoryResponse(BaseModel):
     id: int
     group_id: int
     name: str
+    documents_count: int
 
 
 class CategoriesResponse(BaseModel):

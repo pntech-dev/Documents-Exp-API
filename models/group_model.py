@@ -9,3 +9,7 @@ class Group(Base):
     name = Column(String, unique=True, nullable=False)
     
     categories = relationship('Category', back_populates='group')
+
+    @property
+    def documents_count(self) -> int:
+        return sum(len(category.documents) for category in self.categories)
