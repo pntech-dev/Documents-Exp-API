@@ -1,11 +1,12 @@
 import uvicorn
 from fastapi import FastAPI
-from routers import AuthRouter
+from routers import AuthRouter, AppRouter
 
 
 app = FastAPI(title="Documents Exp API")
 
 app.include_router(AuthRouter)
+app.include_router(AppRouter)
 
 
 if __name__ == "__main__":
