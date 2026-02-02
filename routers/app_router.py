@@ -14,8 +14,32 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
 
 
-"""=== Departments ==="""
+"""=== Groups ==="""
 
-@router.get("/departments", response_model=DepartmentsResponse)
-async def get_departments(service: AppService = Depends(get_app_service)):
-    return await service.get_departments()
+@router.get("/groups", response_model=DepartmentsResponse)
+async def get_groups(service: AppService = Depends(get_app_service)):
+    return await service.get_groups()
+
+
+@router.get("/groups/{group_id}/categories", response_model=CategoriesResponse)
+async def get_group_categories(
+    group_id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.get_group_categories(group_id=group_id)
+
+
+
+"""=== Categories ==="""
+
+@router.get("/category/{id}", response_model=CategoryResponse)
+async def get_category(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.get_category(id=id)
+
+
+@router.get("/categories", response_model=CategoriesResponse)
+async def get_categories(service: AppService = Depends(get_app_service)):
+    return await service.get_categories()
