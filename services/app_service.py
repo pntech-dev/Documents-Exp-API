@@ -3,8 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import AppRepository
 from schemas import (
-    DepartmentsResponse, DepartmentResponse,
-    CategoriesResponse, CategoryResponse
+    DepartmentResponse, DepartmentsResponse,
+    CategoryResponse, CategoriesResponse,
+    DocumentResponse, DocumentsResponse
 )
 
 
@@ -17,20 +18,19 @@ class AppService:
     """=== Departments ===="""
 
     async def get_groups(self) -> DepartmentsResponse:
-        departments = await self.repo.get_groups()
+        groups = await self.repo.get_groups()
         return DepartmentsResponse(
-            departments=[DepartmentResponse.model_validate(d) for d in departments]
-        )
-    
-
-    async def get_group_categories(self, group_id: int) -> CategoriesResponse:
-        categories = await self.repo.get_group_categories(group_id=group_id)
-        return CategoriesResponse(
-            categories=[CategoryResponse.model_validate(c) for c in categories]
+            departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
     
 
     """=== Categories ===="""
+
+    async def get_categories(self) -> CategoriesResponse:
+        categories = await self.repo.get_categories()
+        return CategoriesResponse(
+            categories=[CategoryResponse.model_validate(c) for c in categories]
+        )
 
     async def get_category(self, id: int) -> CategoryResponse:
         category = await self.repo.get_category(id=id)
@@ -40,8 +40,17 @@ class AppService:
         return CategoryResponse.model_validate(category)
     
 
-    async def get_categories(self) -> CategoriesResponse:
-        categories = await self.repo.get_categories()
+    async def get_group_categories(self, group_id: int) -> CategoriesResponse:
+        categories = await self.repo.get_group_categories(group_id=group_id)
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
+        )
+    
+
+    """=== Documents ==="""
+
+    async def get_documents(self) -> DocumentsResponse:
+        documents = await self.repo.get_documents()
+        return DocumentsResponse(
+            documents=[DocumentResponse.model_validate(d) for d in documents]
         )

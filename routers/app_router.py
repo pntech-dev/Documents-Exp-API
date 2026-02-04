@@ -32,7 +32,12 @@ async def get_group_categories(
 
 """=== Categories ==="""
 
-@router.get("/category/{id}", response_model=CategoryResponse)
+@router.get("/categories", response_model=CategoriesResponse)
+async def get_categories(service: AppService = Depends(get_app_service)):
+    return await service.get_categories()
+
+
+@router.get("/categories/{id}", response_model=CategoryResponse)
 async def get_category(
     id: int,
     service: AppService = Depends(get_app_service)
@@ -40,6 +45,9 @@ async def get_category(
     return await service.get_category(id=id)
 
 
-@router.get("/categories", response_model=CategoriesResponse)
-async def get_categories(service: AppService = Depends(get_app_service)):
-    return await service.get_categories()
+
+"""=== Documents ==="""
+
+@router.get("/documents", response_model=DocumentsResponse)
+async def get_documents(service: AppService = Depends(get_app_service)):
+    return await service.get_documents()

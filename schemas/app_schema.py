@@ -26,3 +26,17 @@ class CategoryResponse(BaseModel):
 
 class CategoriesResponse(BaseModel):
     categories: list[CategoryResponse]
+
+
+"""=== Documents ==="""
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int
+    code: str
+    name: str
+
+
+class DocumentsResponse(BaseModel):
+    documents: list[DocumentResponse]
