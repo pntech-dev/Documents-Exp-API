@@ -40,3 +40,18 @@ class DocumentResponse(BaseModel):
 
 class DocumentsResponse(BaseModel):
     documents: list[DocumentResponse]
+
+
+"""=== Pages ==="""
+class PageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    order_index: int
+    designation: str
+    name: str
+
+
+class PagesResponse(BaseModel):
+    pages: list[PageResponse]

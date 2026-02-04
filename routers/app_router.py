@@ -14,23 +14,18 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
 
 
-"""=== Groups ==="""
+# ====================
+# Departments
+# ====================
 
 @router.get("/groups", response_model=DepartmentsResponse)
 async def get_groups(service: AppService = Depends(get_app_service)):
     return await service.get_groups()
 
 
-@router.get("/groups/{group_id}/categories", response_model=CategoriesResponse)
-async def get_group_categories(
-    group_id: int,
-    service: AppService = Depends(get_app_service)
-):
-    return await service.get_group_categories(group_id=group_id)
-
-
-
-"""=== Categories ==="""
+# ====================
+# Categories
+# ====================
 
 @router.get("/categories", response_model=CategoriesResponse)
 async def get_categories(service: AppService = Depends(get_app_service)):
@@ -45,9 +40,35 @@ async def get_category(
     return await service.get_category(id=id)
 
 
+@router.get("/groups/{group_id}/categories", response_model=CategoriesResponse)
+async def get_group_categories(
+    group_id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.get_group_categories(group_id=group_id)
 
-"""=== Documents ==="""
+
+# ====================
+# Documents
+# ====================
 
 @router.get("/documents", response_model=DocumentsResponse)
 async def get_documents(service: AppService = Depends(get_app_service)):
     return await service.get_documents()
+
+
+# ====================
+# Pages
+# ====================
+
+@router.get("/pages", response_model=PagesResponse)
+async def get_pages(service: AppService = Depends(get_app_service)):
+    return await service.get_pages()
+
+
+@router.get("/documents/{document_id}/pages", response_model=PagesResponse)
+async def get_document_pages(
+    document_id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.get_document_pages(document_id=document_id)
