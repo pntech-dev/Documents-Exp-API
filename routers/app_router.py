@@ -57,6 +57,15 @@ async def get_documents(service: AppService = Depends(get_app_service)):
     return await service.get_documents()
 
 
+@router.patch("/documents/{id}", response_model=DocumentResponse)
+async def update_document(
+    id: int,
+    data: DocumentUpdateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.update_document(id=id, data=data)
+
+
 # ====================
 # Pages
 # ====================

@@ -50,10 +50,23 @@ class AppRepository:
     # Documents
     # ====================
 
+    async def get_document(self, id: int) -> Document | None:
+        query = select(Document).where(Document.id == id)
+        document = await self.session.execute(query)
+        return document.scalar_one_or_none()
+
+
     async def get_documents(self) -> list[Document]:
         query = select(Document)
         documents = await self.session.execute(query)
         return documents.scalars().all()
+    
+
+    async def save_document(self, document: Document) -> Document:
+        self.session.add(document)
+        await self.session.commit()
+        await self.session.refresh(document)
+        return document
     
 
     # ====================

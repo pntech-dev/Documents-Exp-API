@@ -6,6 +6,7 @@ from schemas import (
     DepartmentResponse, DepartmentsResponse,
     CategoryResponse, CategoriesResponse,
     DocumentResponse, DocumentsResponse,
+    DocumentUpdateSchema,
     PageResponse, PagesResponse
 )
 
@@ -61,6 +62,18 @@ class AppService:
         return DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )
+    
+    async def update_document(self, id: int, data: DocumentUpdateSchema) -> DocumentResponse:
+        document = await self.repo.get_document(id=id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document.code = data.code or document.code
+        document.name = data.name or document.name
+
+        await self.repo.save_document(document=document)
+
+        return DocumentResponse.model_validate(document)
     
 
     # ====================

@@ -42,6 +42,11 @@ class DocumentsResponse(BaseModel):
     documents: list[DocumentResponse]
 
 
+class DocumentUpdateSchema(BaseModel):
+    code: str | None = None
+    name: str | None = None
+
+
 """=== Pages ==="""
 class PageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
