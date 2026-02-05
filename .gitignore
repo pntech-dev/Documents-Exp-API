@@ -21,4 +21,4 @@ env/
 # Secret files
 config.yaml
 *.key
-.env
+*.env

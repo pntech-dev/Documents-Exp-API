@@ -79,6 +79,12 @@ class AppRepository:
         return pages.scalars().all()
     
 
+    async def get_page(self, id: int) -> Page | None:
+        query = select(Page).where(Page.id == id)
+        page = await self.session.execute(query)
+        return page.scalar_one_or_none()
+    
+
     async def get_document_pages(self, document_id: int) -> list[Page]:
         query = select(Page).where(Page.document_id == document_id)
         pages = await self.session.execute(query)

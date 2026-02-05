@@ -86,6 +86,13 @@ class AppService:
             pages=[PageResponse.model_validate(p) for p in pages]
         )
     
+    async def get_page(self, id: int) -> PageResponse:
+        page = await self.repo.get_page(id=id)
+        if not page:
+            raise HTTPException(status_code=404, detail="Page not found")
+        
+        return PageResponse.model_validate(page)
+    
 
     async def get_document_pages(self, document_id: int) -> PagesResponse:
         pages = await self.repo.get_document_pages(document_id=document_id)

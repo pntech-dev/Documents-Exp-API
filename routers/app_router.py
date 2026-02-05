@@ -75,6 +75,14 @@ async def get_pages(service: AppService = Depends(get_app_service)):
     return await service.get_pages()
 
 
+@router.get("/pages/{id}", response_model=PageResponse)
+async def get_page(
+    id: int,
+    service: AppService = Depends(get_app_service)
+    ):
+    return await service.get_page(id=id)
+
+
 @router.get("/documents/{document_id}/pages", response_model=PagesResponse)
 async def get_document_pages(
     document_id: int,
