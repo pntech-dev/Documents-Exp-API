@@ -107,6 +107,22 @@ class AppService:
         return DocumentResponse.model_validate(document)
     
 
+    async def delete_document(self, id: int) -> dict:
+        document = await self.repo.get_document(id=id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Delete document pages
+        pages = await self.repo.get_document_pages(document_id=id)
+        for page in pages:
+            await self.repo.delete_page(page=page)
+        
+        # Delete document
+        await self.repo.delete_document(document=document)
+
+        return {"detail": "Document deleted"}
+    
+
     # ====================
     # Pages
     # ====================

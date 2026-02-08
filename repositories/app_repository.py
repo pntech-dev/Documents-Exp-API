@@ -69,6 +69,11 @@ class AppRepository:
         return document
     
 
+    async def delete_document(self, document: Document) -> None:
+        await self.session.delete(document)
+        await self.session.commit()
+    
+
     # ====================
     # Pages
     # ====================
@@ -90,11 +95,13 @@ class AppRepository:
         pages = await self.session.execute(query)
         return pages.scalars().all()
 
+
     async def save_page(self, page: Page) -> Page:
         self.session.add(page)
         await self.session.commit()
         await self.session.refresh(page)
         return page
+
 
     async def delete_page(self, page: Page) -> None:
         await self.session.delete(page)

@@ -66,6 +66,14 @@ async def update_document(
     return await service.update_document(id=id, data=data)
 
 
+@router.delete("/documents/{id}")
+async def delete_document(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_document(id=id)
+
+
 # ====================
 # Pages
 # ====================
