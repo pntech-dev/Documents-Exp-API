@@ -9,6 +9,7 @@ from schemas import (
     DocumentUpdateSchema,
     PageResponse, PagesResponse
 )
+from models import Page
 
 
 
@@ -64,6 +65,7 @@ class AppService:
         )
     
     async def update_document(self, id: int, data: DocumentUpdateSchema) -> DocumentResponse:
+        # Save document data
         document = await self.repo.get_document(id=id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
@@ -72,6 +74,35 @@ class AppService:
         document.name = data.name or document.name
 
         await self.repo.save_document(document=document)
+
+        # Save document pages data
+        if data.pages is not None:
+            existing_pages = await self.repo.get_document_pages(document_id=id)
+            existing_pages_map = {p.id: p for p in existing_pages}
+            incoming_ids = set()
+
+            for page_update in data.pages:
+                if page_update.id:
+                    incoming_ids.add(page_update.id)
+                    if page_update.id in existing_pages_map:
+                        page = existing_pages_map[page_update.id]
+                        page.order_index = page_update.order_index
+                        page.designation = page_update.designation
+                        page.name = page_update.name
+                        await self.repo.save_page(page)
+                else:
+                    page = Page(
+                        document_id=id,
+                        order_index=page_update.order_index,
+                        designation=page_update.designation,
+                        name=page_update.name
+                    )
+                    await self.repo.save_page(page)
+            
+            # Delete pages that are missing in the incoming data
+            for page in existing_pages:
+                if page.id not in incoming_ids:
+                    await self.repo.delete_page(page)
 
         return DocumentResponse.model_validate(document)
     

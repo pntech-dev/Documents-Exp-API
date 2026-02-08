@@ -28,6 +28,30 @@ class CategoriesResponse(BaseModel):
     categories: list[CategoryResponse]
 
 
+"""=== Pages ==="""
+class PageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    order_index: int
+    designation: str
+    name: str
+
+
+class PagesResponse(BaseModel):
+    pages: list[PageResponse]
+
+
+class PageUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
+    order_index: int
+    designation: str
+    name: str
+
+
 """=== Documents ==="""
 class DocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -43,20 +67,8 @@ class DocumentsResponse(BaseModel):
 
 
 class DocumentUpdateSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     code: str | None = None
     name: str | None = None
-
-
-"""=== Pages ==="""
-class PageResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    document_id: int
-    order_index: int
-    designation: str
-    name: str
-
-
-class PagesResponse(BaseModel):
-    pages: list[PageResponse]
+    pages: list[PageUpdate] | None = None
