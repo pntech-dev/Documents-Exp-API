@@ -92,7 +92,7 @@ class AppService:
     
 
     async def create_category(self, data: CategoryCreateSchema) -> CategoryResponse:
-        category = await self.repo.get_category_by_name(name=data.name)
+        category = await self.repo.get_category_by_data(name=data.name, group_id=data.group_id)
         if category:
             raise HTTPException(status_code=400, detail="Category already exists")
 
@@ -149,7 +149,18 @@ class AppService:
             raise HTTPException(status_code=400, detail="Document already exists")
         
         # Create document
-        document = await self.repo.create_document(document_data=data.model_dump())
+        document_data = data.model_dump(exclude={"pages"})
+        document = await self.repo.create_document(document_data=document_data)
+
+        if data.pages:
+            for page_data in data.pages:
+                page = Page(
+                    document_id=document.id,
+                    order_index=page_data.order_index,
+                    designation=page_data.designation,
+                    name=page_data.name
+                )
+                await self.repo.save_page(page)
         
         return DocumentResponse.model_validate(document)
 

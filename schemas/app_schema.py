@@ -86,6 +86,7 @@ class DocumentCreateSchema(BaseModel):
     category_id: int
     code: str
     name: str
+    pages: list[PageUpdate] | None = None
 
 
 class DocumentUpdateSchema(BaseModel):

@@ -31,12 +31,13 @@ async def create_group(
     return await service.create_group(data=data)
 
 
-@router.patch("/groups/{id}", response_model=DepartmentUpdate)
+@router.patch("/groups/{id}", response_model=DepartmentResponse)
 async def update_group(
     id: int,
+    data: DepartmentUpdate,
     service: AppService = Depends(get_app_service)
 ):
-    return await service.update_group(id=id)
+    return await service.update_group(id=id, data=data)
 
 
 @router.delete("/groups/{id}")

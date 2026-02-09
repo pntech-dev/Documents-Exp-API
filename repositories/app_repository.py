@@ -80,10 +80,13 @@ class AppRepository:
         return category.scalar_one_or_none()
     
 
-    async def get_category_by_name(self, name: str) -> Category | None:
+    async def get_category_by_data(self, name: str, group_id: int) -> Category | None:
         query = select(Category).options(
             selectinload(Category.documents)
-        ).where(Category.name == name)
+        ).where(
+            Category.name == name,
+            Category.group_id == group_id
+        )
         category = await self.session.execute(query)
         return category.scalar_one_or_none()
     
