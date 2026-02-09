@@ -6,11 +6,12 @@ from schemas import (
     DepartmentResponse, DepartmentsResponse,
     DepartmentCreateSchema, DepartmentUpdate,
     CategoryResponse, CategoriesResponse,
+    CategoryCreateSchema,
     DocumentResponse, DocumentsResponse,
     DocumentUpdateSchema,
     PageResponse, PagesResponse
 )
-from models import Page
+from models import Page, Category
 
 
 
@@ -35,7 +36,7 @@ class AppService:
         if group:
             raise HTTPException(status_code=400, detail="Group already exists")
         
-        group = await self.repo.create_group(name=data.name)
+        group = await self.repo.create_group(group_data=data.model_dump())
         return DepartmentResponse.model_validate(group)
     
 
@@ -88,6 +89,43 @@ class AppService:
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
+    
+
+    async def create_category(self, data: CategoryCreateSchema) -> CategoryResponse:
+        category = await self.repo.get_category_by_name(name=data.name)
+        if category:
+            raise HTTPException(status_code=400, detail="Category already exists")
+
+        category = await self.repo.create_category(category_data=data.model_dump())
+
+        return CategoryResponse.model_validate(category)
+    
+
+    async def update_category(self, id: int, data: CategoryCreateSchema) -> CategoryResponse:
+        category = await self.repo.get_category(id=id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        category.name = data.name
+        await self.repo.save_category(category=category)
+
+        return CategoryResponse.model_validate(category)
+    
+
+    async def delete_category(self, id: int) -> dict:
+        category = await self.repo.get_category(id=id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        # Delete all documents in category
+        documents = await self.repo.get_category_documents(category_id=id)
+        for document in documents:
+            await self.delete_document(id=document.id)
+        
+        # Delete category
+        await self.repo.delete_category(category=category)
+
+        return {"detail": "Category deleted"}
 
 
     # ====================

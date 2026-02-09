@@ -72,6 +72,31 @@ async def get_group_categories(
     return await service.get_group_categories(group_id=group_id)
 
 
+@router.post("/categories", response_model=CategoryResponse)
+async def create_category(
+    data: CategoryCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_category(data=data)
+
+
+@router.patch("/categories/{id}", response_model=CategoryResponse)
+async def update_category(
+    id: int,
+    data: CategoryUpdateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.update_category(id=id, data=data)
+
+
+@router.delete("/categories/{id}")
+async def delete_category(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_category(id=id)
+
+
 # ====================
 # Documents
 # ====================

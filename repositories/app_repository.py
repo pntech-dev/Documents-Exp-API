@@ -45,8 +45,8 @@ class AppRepository:
         return group
 
 
-    async def create_group(self, name: str) -> Group:
-        group = Group(name=name)
+    async def create_group(self, group_data: dict) -> Group:
+        group = Group(**group_data)
         self.session.add(group)
         await self.session.commit()
         
@@ -73,17 +73,52 @@ class AppRepository:
     
 
     async def get_category(self, id: int) -> Category | None:
-        query = select(Category).options(selectinload(Category.documents)).where(Category.id == id)
+        query = select(Category).options(
+            selectinload(Category.documents)
+        ).where(Category.id == id)
+        category = await self.session.execute(query)
+        return category.scalar_one_or_none()
+    
+
+    async def get_category_by_name(self, name: str) -> Category | None:
+        query = select(Category).options(
+            selectinload(Category.documents)
+        ).where(Category.name == name)
         category = await self.session.execute(query)
         return category.scalar_one_or_none()
     
 
     async def get_group_categories(self, group_id: int) -> list[Category]:
-        query = select(Category).options(selectinload(Category.documents)).where(
-            Category.group_id == group_id
-        )
+        query = select(Category).options(
+            selectinload(Category.documents)
+        ).where(Category.group_id == group_id)
         categories = await self.session.execute(query)
         return categories.scalars().all()
+    
+
+    async def get_category_documents(self, category_id: int) -> list[Document]:
+        query = select(Document).where(Document.category_id == category_id)
+        documents = await self.session.execute(query)
+        return documents.scalars().all()
+    
+
+    async def create_category(self, category_data: dict) -> Category:
+        category = Category(**category_data)
+        self.session.add(category)
+        await self.session.commit()
+        
+        query = select(Category).options(
+            selectinload(Category.documents)
+        ).where(Category.id == category.id)
+        result = await self.session.execute(query)
+        return result.scalar_one()
+    
+
+    async def save_category(self, category: Category) -> Category:
+        self.session.add(category)
+        await self.session.commit()
+        await self.session.refresh(category)
+        return category
 
 
     async def delete_category(self, category: Category) -> None:

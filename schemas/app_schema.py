@@ -36,6 +36,14 @@ class CategoriesResponse(BaseModel):
     categories: list[CategoryResponse]
 
 
+class CategoryCreateSchema(BaseModel):
+    group_id: int
+    name: str
+
+class CategoryUpdateSchema(BaseModel):
+    name: str
+
+
 """=== Pages ==="""
 class PageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
