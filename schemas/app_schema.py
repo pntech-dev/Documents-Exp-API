@@ -1,6 +1,12 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class SearchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    result: list[dict]
+
+
 """=== Departments ==="""
 class DepartmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -12,6 +18,14 @@ class DepartmentResponse(BaseModel):
 
 class DepartmentsResponse(BaseModel):
     departments: list[DepartmentResponse]
+
+
+class DepartmentCreateSchema(BaseModel):
+    name: str
+
+
+class DepartmentUpdate(BaseModel):
+    name: str
 
 
 """=== Categories ==="""
@@ -28,23 +42,12 @@ class CategoriesResponse(BaseModel):
     categories: list[CategoryResponse]
 
 
-"""=== Documents ==="""
-class DocumentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    category_id: int
-    code: str
+class CategoryCreateSchema(BaseModel):
+    group_id: int
     name: str
 
-
-class DocumentsResponse(BaseModel):
-    documents: list[DocumentResponse]
-
-
-class DocumentUpdateSchema(BaseModel):
-    code: str | None = None
-    name: str | None = None
+class CategoryUpdateSchema(BaseModel):
+    name: str
 
 
 """=== Pages ==="""
@@ -60,3 +63,41 @@ class PageResponse(BaseModel):
 
 class PagesResponse(BaseModel):
     pages: list[PageResponse]
+
+
+class PageUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
+    order_index: int
+    designation: str
+    name: str
+
+
+"""=== Documents ==="""
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int
+    code: str
+    name: str
+
+
+class DocumentsResponse(BaseModel):
+    documents: list[DocumentResponse]
+
+
+class DocumentCreateSchema(BaseModel):
+    category_id: int
+    code: str
+    name: str
+    pages: list[PageUpdate] | None = None
+
+
+class DocumentUpdateSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    code: str | None = None
+    name: str | None = None
+    pages: list[PageUpdate] | None = None

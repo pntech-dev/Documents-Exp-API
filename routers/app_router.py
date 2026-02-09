@@ -13,6 +13,20 @@ router = APIRouter(prefix="/app", tags=["App"])
 def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
 
+# ====================
+# Search
+# ====================
+
+@router.get("/category_search", response_model=SearchResponse)
+async def category_search(
+    category_id: int,
+    query: str,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.search_in_category(
+        category_id=category_id, query=query
+    )
+
 
 # ====================
 # Departments
@@ -21,6 +35,31 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
 @router.get("/groups", response_model=DepartmentsResponse)
 async def get_groups(service: AppService = Depends(get_app_service)):
     return await service.get_groups()
+
+
+@router.post("/groups", response_model=DepartmentResponse)
+async def create_group(
+    data: DepartmentCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_group(data=data)
+
+
+@router.patch("/groups/{id}", response_model=DepartmentResponse)
+async def update_group(
+    id: int,
+    data: DepartmentUpdate,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.update_group(id=id, data=data)
+
+
+@router.delete("/groups/{id}")
+async def delete_group(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_group(id=id)
 
 
 # ====================
@@ -48,6 +87,31 @@ async def get_group_categories(
     return await service.get_group_categories(group_id=group_id)
 
 
+@router.post("/categories", response_model=CategoryResponse)
+async def create_category(
+    data: CategoryCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_category(data=data)
+
+
+@router.patch("/categories/{id}", response_model=CategoryResponse)
+async def update_category(
+    id: int,
+    data: CategoryUpdateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.update_category(id=id, data=data)
+
+
+@router.delete("/categories/{id}")
+async def delete_category(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_category(id=id)
+
+
 # ====================
 # Documents
 # ====================
@@ -55,6 +119,14 @@ async def get_group_categories(
 @router.get("/documents", response_model=DocumentsResponse)
 async def get_documents(service: AppService = Depends(get_app_service)):
     return await service.get_documents()
+
+
+@router.post("/documents", response_model=DocumentResponse)
+async def create_document(
+    data: DocumentCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_document(data=data)
 
 
 @router.patch("/documents/{id}", response_model=DocumentResponse)
@@ -66,6 +138,14 @@ async def update_document(
     return await service.update_document(id=id, data=data)
 
 
+@router.delete("/documents/{id}")
+async def delete_document(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_document(id=id)
+
+
 # ====================
 # Pages
 # ====================
@@ -73,6 +153,14 @@ async def update_document(
 @router.get("/pages", response_model=PagesResponse)
 async def get_pages(service: AppService = Depends(get_app_service)):
     return await service.get_pages()
+
+
+@router.get("/pages/{id}", response_model=PageResponse)
+async def get_page(
+    id: int,
+    service: AppService = Depends(get_app_service)
+    ):
+    return await service.get_page(id=id)
 
 
 @router.get("/documents/{document_id}/pages", response_model=PagesResponse)
