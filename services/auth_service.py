@@ -1,3 +1,6 @@
+import asyncio
+import resend
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import timedelta, datetime, timezone
@@ -22,6 +25,7 @@ from schemas import (
     RefreshTokenSchema
 )
 from core.config import settings
+from core.email_templates import EMAIL_VERIFICATION_TEMPLATE
 from repositories import AuthRepository
 from models import User, RefreshToken, VerificationCode, ResetToken
 
@@ -29,6 +33,7 @@ from models import User, RefreshToken, VerificationCode, ResetToken
 class AuthService:
     def __init__(self, db: AsyncSession) -> None:
         self.repo = AuthRepository(db)
+        resend.api_key = settings.RESEND_API_KEY
     
 
     # ===============
@@ -197,9 +202,14 @@ class AuthService:
         await self.repo.save_verification_code(code=verification_code)
 
         # Send email with verification code (=== TEMP ===)
-        print(f"Verification code: {code.get('code')}")
+        html_content = EMAIL_VERIFICATION_TEMPLATE.format(
+            title="Sign up Verification",
+            code=code.get('code'),
+            expire_minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+        )
+        await self._send_email(to=data.email, subject="Sign up Verification Code", html=html_content)
         
-        return {"detail": f"Verification code sent. CODE: {code.get('code')}"}
+        return {"detail": "Verification code sent."}
     
 
 
@@ -236,7 +246,12 @@ class AuthService:
             code = generate_verification_code()
 
             # Send email with verification code
-            print(f"Verification code: {code['code']}")
+            html_content = EMAIL_VERIFICATION_TEMPLATE.format(
+                title="Password Reset",
+                code=code['code'],
+                expire_minutes=settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES
+            )
+            await self._send_email(to=data.email, subject="Password Reset Code", html=html_content)
 
             # Save a hash of verification code in DB
             verification_code = VerificationCode(
@@ -248,7 +263,7 @@ class AuthService:
             )
             await self.repo.save_verification_code(code=verification_code)
 
-        return {"detail": f"If an account with this email exists, a verification code has been sent. Code: {code['code']}"}
+        return {"detail": "If an account with this email exists, a verification code has been sent."}
 
 
     async def verify_reset_code(self, data: VerefyResetCodeSchema) -> dict:
@@ -498,3 +513,20 @@ class AuthService:
                 status_code=status_code,
                 detail=msg
             )
+
+
+    """=== Email ==="""
+
+    async def _send_email(self, to: str, subject: str, html: str) -> None:
+        params = {
+            "from": settings.EMAIL_SENDER,
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        }
+        
+        try:
+            await asyncio.to_thread(resend.Emails.send, params)
+        except Exception as e:
+            print(f"Failed to send email: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send email")

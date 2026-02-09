@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     NUMBER_OF_BYTES_FOR_RESET_TOKEN_GENERATION: int = 32
 
+    RESEND_API_KEY: str
+    EMAIL_SENDER: str
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
