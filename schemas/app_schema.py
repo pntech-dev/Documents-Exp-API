@@ -1,6 +1,12 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class SearchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    result: list[dict]
+
+
 """=== Departments ==="""
 class DepartmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

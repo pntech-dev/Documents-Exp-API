@@ -13,6 +13,20 @@ router = APIRouter(prefix="/app", tags=["App"])
 def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
 
+# ====================
+# Search
+# ====================
+
+@router.get("/category_search", response_model=SearchResponse)
+async def category_search(
+    category_id: int,
+    query: str,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.search_in_category(
+        category_id=category_id, query=query
+    )
+
 
 # ====================
 # Departments

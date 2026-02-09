@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,38 @@ from models import Group, Category, Document, Page
 class AppRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+
+    # ====================
+    # Search
+    # ====================
+
+    async def search_documents(self, category_id: int, query_words: list[str]) -> list[Document]:
+        conditions = []
+        for word in query_words:
+            pattern = f"%{word}%"
+            conditions.append(or_(Document.name.ilike(pattern), Document.code.ilike(pattern)))
+        
+        query = select(Document).where(
+            Document.category_id == category_id,
+            and_(*conditions)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+    
+
+    async def search_pages(self, category_id: int, query_words: list[str]) -> list[Page]:
+        conditions = []
+        for word in query_words:
+            pattern = f"%{word}%"
+            conditions.append(or_(Page.name.ilike(pattern), Page.designation.ilike(pattern)))
+            
+        query = select(Page).join(Document, Document.id == Page.document_id).where(
+            Document.category_id == category_id,
+            and_(*conditions)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
 
 
     # ====================
@@ -100,7 +132,9 @@ class AppRepository:
     
 
     async def get_category_documents(self, category_id: int) -> list[Document]:
-        query = select(Document).where(Document.category_id == category_id)
+        query = select(Document).options(
+            selectinload(Document.pages)
+        ).where(Document.category_id == category_id)
         documents = await self.session.execute(query)
         return documents.scalars().all()
     

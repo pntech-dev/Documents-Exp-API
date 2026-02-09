@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import AppRepository
 from schemas import (
+    SearchResponse,
     DepartmentResponse, DepartmentsResponse,
     DepartmentCreateSchema, DepartmentUpdate,
     CategoryResponse, CategoriesResponse,
@@ -18,6 +19,27 @@ from models import Page
 class AppService:
     def __init__(self, db: AsyncSession) -> None:
         self.repo = AppRepository(db)
+
+
+    async def search_in_category(
+            self, 
+            category_id: int, 
+            query: str
+    ) -> SearchResponse:
+        query_words = query.split()
+        
+        documents = await self.repo.search_documents(category_id=category_id, query_words=query_words)
+        pages = await self.repo.search_pages(category_id=category_id, query_words=query_words)
+
+        search_results = []
+
+        for document in documents:
+            search_results.append(DocumentResponse.model_validate(document).model_dump())
+        
+        for page in pages:
+            search_results.append(PageResponse.model_validate(page).model_dump())
+
+        return SearchResponse(result=search_results)
 
 
     # ====================
