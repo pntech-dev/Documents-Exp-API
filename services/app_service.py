@@ -8,10 +8,10 @@ from schemas import (
     CategoryResponse, CategoriesResponse,
     CategoryCreateSchema,
     DocumentResponse, DocumentsResponse,
-    DocumentUpdateSchema,
+    DocumentUpdateSchema, DocumentCreateSchema,
     PageResponse, PagesResponse
 )
-from models import Page, Category
+from models import Page
 
 
 
@@ -137,6 +137,22 @@ class AppService:
         return DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )
+    
+
+    async def create_document(self, data: DocumentCreateSchema) -> DocumentResponse:
+        document = await self.repo.get_document_by_data(
+            name=data.name, 
+            code=data.code,
+            category_id=data.category_id
+        )
+        if document:
+            raise HTTPException(status_code=400, detail="Document already exists")
+        
+        # Create document
+        document = await self.repo.create_document(document_data=data.model_dump())
+        
+        return DocumentResponse.model_validate(document)
+
     
     async def update_document(self, id: int, data: DocumentUpdateSchema) -> DocumentResponse:
         # Save document data

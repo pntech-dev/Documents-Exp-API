@@ -82,6 +82,12 @@ class DocumentsResponse(BaseModel):
     documents: list[DocumentResponse]
 
 
+class DocumentCreateSchema(BaseModel):
+    category_id: int
+    code: str
+    name: str
+
+
 class DocumentUpdateSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     

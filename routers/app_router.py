@@ -106,6 +106,14 @@ async def get_documents(service: AppService = Depends(get_app_service)):
     return await service.get_documents()
 
 
+@router.post("/documents", response_model=DocumentResponse)
+async def create_document(
+    data: DocumentCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_document(data=data)
+
+
 @router.patch("/documents/{id}", response_model=DocumentResponse)
 async def update_document(
     id: int,

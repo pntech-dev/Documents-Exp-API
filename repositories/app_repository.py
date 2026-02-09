@@ -142,6 +142,33 @@ class AppRepository:
         return documents.scalars().all()
     
 
+    async def get_document_by_data(
+            self, 
+            name: str, 
+            code: str, 
+            category_id: int
+    ) -> Document | None:
+        query = select(Document).where(
+            Document.name == name,
+            Document.code == code,
+            Document.category_id == category_id
+        )
+        document = await self.session.execute(query)
+        return document.scalar_one_or_none()
+    
+
+    async def create_document(self, document_data: dict) -> Document:
+        document = Document(**document_data)
+        self.session.add(document)
+        await self.session.commit()
+        
+        query = select(Document).options(
+            selectinload(Document.pages)
+        ).where(Document.id == document.id)
+        result = await self.session.execute(query)
+        return result.scalar_one()
+    
+
     async def save_document(self, document: Document) -> Document:
         self.session.add(document)
         await self.session.commit()
