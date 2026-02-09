@@ -14,6 +14,14 @@ class DepartmentsResponse(BaseModel):
     departments: list[DepartmentResponse]
 
 
+class DepartmentCreateSchema(BaseModel):
+    name: str
+
+
+class DepartmentUpdate(BaseModel):
+    name: str
+
+
 """=== Categories ==="""
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from repositories import AppRepository
 from schemas import (
     DepartmentResponse, DepartmentsResponse,
+    DepartmentCreateSchema, DepartmentUpdate,
     CategoryResponse, CategoriesResponse,
     DocumentResponse, DocumentsResponse,
     DocumentUpdateSchema,
@@ -27,6 +28,41 @@ class AppService:
         return DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
+    
+    
+    async def create_group(self, data: DepartmentCreateSchema) -> DepartmentResponse:
+        group = await self.repo.get_group_by_name(name=data.name)
+        if group:
+            raise HTTPException(status_code=400, detail="Group already exists")
+        
+        group = await self.repo.create_group(name=data.name)
+        return DepartmentResponse.model_validate(group)
+    
+
+    async def update_group(self, id: int, data: DepartmentUpdate) -> DepartmentResponse:
+        group = await self.repo.get_group_by_id(id=id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        group.name = data.name
+        await self.repo.save_group(group=group)
+
+        return DepartmentResponse.model_validate(group)
+    
+
+    async def delete_group(self, id: int) -> dict:
+        group = await self.repo.get_group_by_id(id=id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        for category in group.categories:
+            for document in category.documents:
+                await self.delete_document(id=document.id)
+            await self.repo.delete_category(category=category)
+
+        await self.repo.delete_group(group=group)
+
+        return {"detail": "Group deleted"}
 
 
     # ====================

@@ -23,6 +23,30 @@ async def get_groups(service: AppService = Depends(get_app_service)):
     return await service.get_groups()
 
 
+@router.post("/groups", response_model=DepartmentResponse)
+async def create_group(
+    data: DepartmentCreateSchema,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.create_group(data=data)
+
+
+@router.patch("/groups/{id}", response_model=DepartmentUpdate)
+async def update_group(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.update_group(id=id)
+
+
+@router.delete("/groups/{id}")
+async def delete_group(
+    id: int,
+    service: AppService = Depends(get_app_service)
+):
+    return await service.delete_group(id=id)
+
+
 # ====================
 # Categories
 # ====================

@@ -20,6 +20,46 @@ class AppRepository:
         )
         departments = await self.session.execute(query)
         return departments.scalars().all()
+    
+
+    async def get_group_by_id(self, id: int) -> Group | None:
+        query = select(Group).options(
+            selectinload(Group.categories).selectinload(Category.documents)
+        ).where(Group.id == id)
+        group = await self.session.execute(query)
+        return group.scalar_one_or_none()
+    
+
+    async def get_group_by_name(self, name: str) -> Group | None:
+        query = select(Group).options(
+            selectinload(Group.categories).selectinload(Category.documents)
+        ).where(Group.name == name)
+        group = await self.session.execute(query)
+        return group.scalar_one_or_none()
+    
+
+    async def save_group(self, group: Group) -> Group:
+        self.session.add(group)
+        await self.session.commit()
+        await self.session.refresh(group)
+        return group
+
+
+    async def create_group(self, name: str) -> Group:
+        group = Group(name=name)
+        self.session.add(group)
+        await self.session.commit()
+        
+        query = select(Group).options(
+            selectinload(Group.categories).selectinload(Category.documents)
+        ).where(Group.id == group.id)
+        result = await self.session.execute(query)
+        return result.scalar_one()
+    
+
+    async def delete_group(self, group: Group) -> None:
+        await self.session.delete(group)
+        await self.session.commit()
 
 
     # ====================
@@ -44,6 +84,11 @@ class AppRepository:
         )
         categories = await self.session.execute(query)
         return categories.scalars().all()
+
+
+    async def delete_category(self, category: Category) -> None:
+        await self.session.delete(category)
+        await self.session.commit()
 
 
     # ====================
