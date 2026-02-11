@@ -15,6 +15,16 @@ class Settings(BaseSettings):
 
     RESEND_API_KEY: str
     EMAIL_SENDER: str
+    ALLOWED_EMAIL_DOMAINS: list[str] = []
+
+    SERVER_HOST: str = "0.0.0.0"
+    SERVER_PORT: int = 8000
+
+    # Rate Limiting
+    RATE_LIMIT_TIMES: int = 5
+    RATE_LIMIT_SECONDS: int = 60
+
+    REDIS_URL: str = "redis://localhost:6379"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

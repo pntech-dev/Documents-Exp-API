@@ -1,9 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from utils import validate_password
 
     
     
 """=== User ==="""
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: EmailStr
     username: str | None = None
@@ -34,19 +37,7 @@ class SignupSchema(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, password: str) -> str:
-        if any(char.isspace() for char in password):
-            raise ValueError("Password cannot contain whitespace characters")
-        
-        if not any(char.isdigit() for char in password):
-            raise ValueError("Password must contain at least one digit")
-
-        if not any(char.isalpha() for char in password):
-            raise ValueError("Password must contain at least one letter")
-        
-        if not any(char.isupper() for char in password):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        return password
+        return validate_password(password)
 
 
 class SignupEmailConfirmSchema(BaseModel):
@@ -65,7 +56,7 @@ class RequestPasswordResetSchema(BaseModel):
     email: EmailStr
 
 
-class VerefyResetCodeSchema(BaseModel):
+class VerifyResetCodeSchema(BaseModel):
     email: EmailStr
     code: str
 
@@ -77,16 +68,4 @@ class ResetPasswordSchema(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, password: str) -> str:
-        if any(char.isspace() for char in password):
-            raise ValueError("Password cannot contain whitespace characters")
-        
-        if not any(char.isdigit() for char in password):
-            raise ValueError("Password must contain at least one digit")
-
-        if not any(char.isalpha() for char in password):
-            raise ValueError("Password must contain at least one letter")
-        
-        if not any(char.isupper() for char in password):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        return password
+        return validate_password(password)

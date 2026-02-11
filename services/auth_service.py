@@ -1,5 +1,6 @@
 import asyncio
 import resend
+import logging
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ from schemas import (
     SignupSchema,
     SignupEmailConfirmSchema,
     RequestPasswordResetSchema,
-    VerefyResetCodeSchema,
+    VerifyResetCodeSchema,
     ResetPasswordSchema,
     RefreshTokenSchema
 )
@@ -28,6 +29,8 @@ from core.config import settings
 from core.email_templates import EMAIL_VERIFICATION_TEMPLATE
 from repositories import AuthRepository
 from models import User, RefreshToken, VerificationCode, ResetToken
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -90,6 +93,7 @@ class AuthService:
 
         # Save the refresh token record
         await self.repo.save_refresh_token(refresh_token=refresh_token_record)
+        await self.repo.session.commit()
 
         # Create response
         response = await self._create_token_response(tokens=tokens, user=user)
@@ -159,6 +163,7 @@ class AuthService:
 
         # Invalidate all verifications codes
         await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
+        await self.repo.session.commit()
 
         return response
 
@@ -175,6 +180,16 @@ class AuthService:
         Returns:
             dict: A confirmation message.
         """
+
+        # Check allowed domains
+        if settings.ALLOWED_EMAIL_DOMAINS:
+            domain = data.email.split("@")[-1].lower()
+            allowed_domains = {d.lower().lstrip("@") for d in settings.ALLOWED_EMAIL_DOMAINS}
+            await self._check_http_error(
+                condition=domain not in allowed_domains,
+                status_code=403,
+                msg="Registration is not allowed for this email domain"
+            )
 
         # Check if a user with the same email address already exists
         user = await self.repo.get_user_by_email(email=data.email)
@@ -200,6 +215,7 @@ class AuthService:
         )
 
         await self.repo.save_verification_code(code=verification_code)
+        await self.repo.session.commit()
 
         # Send email with verification code (=== TEMP ===)
         html_content = EMAIL_VERIFICATION_TEMPLATE.format(
@@ -262,11 +278,12 @@ class AuthService:
                 )
             )
             await self.repo.save_verification_code(code=verification_code)
+            await self.repo.session.commit()
 
         return {"detail": "If an account with this email exists, a verification code has been sent."}
 
 
-    async def verify_reset_code(self, data: VerefyResetCodeSchema) -> dict:
+    async def verify_reset_code(self, data: VerifyResetCodeSchema) -> dict:
         """
         Verifies the password reset code.
 
@@ -325,6 +342,7 @@ class AuthService:
 
         # Invalidate code
         await self.repo.invalidate_all_verifications_codes_by_email(email=data.email)
+        await self.repo.session.commit()
 
         return {"reset_token": reset_token}
 
@@ -367,6 +385,7 @@ class AuthService:
 
         # Invalidate reset token
         await self.repo.invalidate_reset_token(token=token)
+        await self.repo.session.commit()
 
         return {"detail": "Password changed"}
     
@@ -422,6 +441,7 @@ class AuthService:
             )
         )
         await self.repo.save_refresh_token(refresh_token=new_refresh_token)
+        await self.repo.session.commit()
 
         # Build and return the final response.
         response = await self._create_token_response(tokens=new_tokens, user=user)
@@ -528,5 +548,6 @@ class AuthService:
         try:
             await asyncio.to_thread(resend.Emails.send, params)
         except Exception as e:
-            print(f"Failed to send email: {e}")
-            raise HTTPException(status_code=500, detail="Failed to send email")
+            logger.error(f"Failed to send email to {to}: {e}")
+            # Raise exception to notify user about failure
+            raise HTTPException(status_code=500, detail="Failed to send email.")

@@ -62,7 +62,7 @@ class AuthRepository:
         """
 
         self.session.add(user)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(user)
 
         return user
@@ -121,7 +121,7 @@ class AuthRepository:
         """
 
         self.session.add(token)
-        await self.session.commit()
+        await self.session.flush()
 
 
     async def save_refresh_token(self, refresh_token: RefreshToken) -> RefreshToken:
@@ -135,7 +135,7 @@ class AuthRepository:
         """
 
         self.session.add(refresh_token)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(refresh_token)
 
         return refresh_token
@@ -149,7 +149,7 @@ class AuthRepository:
         """
 
         token.used = True
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(token)
 
 
@@ -160,7 +160,7 @@ class AuthRepository:
             token: The RefreshToken object to invalidate.
         """
         token.used = True
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(token)
 
 
@@ -180,7 +180,7 @@ class AuthRepository:
             .values(used=True)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
 
 
@@ -219,7 +219,7 @@ class AuthRepository:
             None
         """
         self.session.add(code)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(code)
 
 
@@ -240,4 +240,4 @@ class AuthRepository:
             .values(used=True)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()

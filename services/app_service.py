@@ -17,6 +17,12 @@ from models import Page
 
 
 class AppService:
+    """
+    Service layer for application business logic.
+
+    Handles operations related to groups (departments), categories,
+    documents, and pages, including search functionality.
+    """
     def __init__(self, db: AsyncSession) -> None:
         self.repo = AppRepository(db)
 
@@ -26,10 +32,18 @@ class AppService:
             category_id: int, 
             query: str
     ) -> SearchResponse:
-        query_words = query.split()
-        
-        documents = await self.repo.search_documents(category_id=category_id, query_words=query_words)
-        pages = await self.repo.search_pages(category_id=category_id, query_words=query_words)
+        """
+        Searches for documents and pages within a specific category.
+
+        Args:
+            category_id (int): The ID of the category to search in.
+            query (str): The search query string.
+
+        Returns:
+            SearchResponse: A response object containing the search results.
+        """
+        documents = await self.repo.search_documents(category_id=category_id, query=query)
+        pages = await self.repo.search_pages(category_id=category_id, query=query)
 
         search_results = []
 
@@ -46,44 +60,98 @@ class AppService:
     # Departments
     # ====================
 
-    async def get_groups(self) -> DepartmentsResponse:
-        groups = await self.repo.get_groups()
+    async def get_groups(self, limit: int | None, offset: int) -> DepartmentsResponse:
+        """
+        Retrieves a list of groups (departments).
+
+        Args:
+            limit (int | None): The maximum number of groups to return.
+            offset (int): The number of groups to skip.
+
+        Returns:
+            DepartmentsResponse: A response object containing the list of groups.
+        """
+        groups = await self.repo.get_groups(limit=limit, offset=offset)
         return DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
     
     
     async def create_group(self, data: DepartmentCreateSchema) -> DepartmentResponse:
+        """
+        Creates a new group (department).
+
+        Args:
+            data (DepartmentCreateSchema): The data for the new group.
+
+        Returns:
+            DepartmentResponse: The created group.
+
+        Raises:
+            HTTPException: If a group with the same name already exists.
+        """
         group = await self.repo.get_group_by_name(name=data.name)
         if group:
             raise HTTPException(status_code=400, detail="Group already exists")
         
-        group = await self.repo.create_group(group_data=data.model_dump())
+        group = await self.repo.create_group(name=data.name)
+        await self.repo.session.commit()
         return DepartmentResponse.model_validate(group)
     
 
     async def update_group(self, id: int, data: DepartmentUpdate) -> DepartmentResponse:
+        """
+        Updates an existing group.
+
+        Args:
+            id (int): The ID of the group to update.
+            data (DepartmentUpdate): The new data for the group.
+
+        Returns:
+            DepartmentResponse: The updated group.
+
+        Raises:
+            HTTPException: If the group is not found.
+        """
         group = await self.repo.get_group_by_id(id=id)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         
         group.name = data.name
         await self.repo.save_group(group=group)
+        await self.repo.session.commit()
 
         return DepartmentResponse.model_validate(group)
     
 
     async def delete_group(self, id: int) -> dict:
+        """
+        Deletes a group and all its associated content (categories, documents, pages).
+
+        Args:
+            id (int): The ID of the group to delete.
+
+        Returns:
+            dict: A confirmation message.
+
+        Raises:
+            HTTPException: If the group is not found.
+        """
         group = await self.repo.get_group_by_id(id=id)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         
-        for category in group.categories:
-            for document in category.documents:
-                await self.delete_document(id=document.id)
-            await self.repo.delete_category(category=category)
+        # Bulk delete optimization
+        category_ids = await self.repo.get_category_ids_by_group(group_id=id)
+        if category_ids:
+            document_ids = await self.repo.get_document_ids_by_categories(category_ids=category_ids)
+            if document_ids:
+                await self.repo.delete_pages_by_document_ids(document_ids=document_ids)
+                await self.repo.delete_documents_by_ids(document_ids=document_ids)
+            await self.repo.delete_categories_by_ids(category_ids=category_ids)
 
         await self.repo.delete_group(group=group)
+        await self.repo.session.commit()
 
         return {"detail": "Group deleted"}
 
@@ -92,13 +160,35 @@ class AppService:
     # Categories
     # ====================
 
-    async def get_categories(self) -> CategoriesResponse:
-        categories = await self.repo.get_categories()
+    async def get_categories(self, limit: int | None, offset: int) -> CategoriesResponse:
+        """
+        Retrieves a list of all categories.
+
+        Args:
+            limit (int | None): The maximum number of categories to return.
+            offset (int): The number of categories to skip.
+
+        Returns:
+            CategoriesResponse: A response object containing the list of categories.
+        """
+        categories = await self.repo.get_categories(limit=limit, offset=offset)
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
 
     async def get_category(self, id: int) -> CategoryResponse:
+        """
+        Retrieves a specific category by ID.
+
+        Args:
+            id (int): The ID of the category.
+
+        Returns:
+            CategoryResponse: The requested category.
+
+        Raises:
+            HTTPException: If the category is not found.
+        """
         category = await self.repo.get_category(id=id)
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
@@ -106,46 +196,98 @@ class AppService:
         return CategoryResponse.model_validate(category)
 
 
-    async def get_group_categories(self, group_id: int) -> CategoriesResponse:
-        categories = await self.repo.get_group_categories(group_id=group_id)
+    async def get_group_categories(self, group_id: int, limit: int | None, offset: int) -> CategoriesResponse:
+        """
+        Retrieves categories belonging to a specific group.
+
+        Args:
+            group_id (int): The ID of the group.
+            limit (int | None): The maximum number of categories to return.
+            offset (int): The number of categories to skip.
+
+        Returns:
+            CategoriesResponse: A response object containing the list of categories.
+        """
+        categories = await self.repo.get_group_categories(group_id=group_id, limit=limit, offset=offset)
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
     
 
     async def create_category(self, data: CategoryCreateSchema) -> CategoryResponse:
+        """
+        Creates a new category within a group.
+
+        Args:
+            data (CategoryCreateSchema): The data for the new category.
+
+        Returns:
+            CategoryResponse: The created category.
+
+        Raises:
+            HTTPException: If a category with the same name already exists in the group.
+        """
         category = await self.repo.get_category_by_data(name=data.name, group_id=data.group_id)
         if category:
             raise HTTPException(status_code=400, detail="Category already exists")
 
-        category = await self.repo.create_category(category_data=data.model_dump())
+        category = await self.repo.create_category(name=data.name, group_id=data.group_id)
+        await self.repo.session.commit()
 
         return CategoryResponse.model_validate(category)
     
 
     async def update_category(self, id: int, data: CategoryCreateSchema) -> CategoryResponse:
+        """
+        Updates an existing category.
+
+        Args:
+            id (int): The ID of the category to update.
+            data (CategoryCreateSchema): The new data for the category.
+
+        Returns:
+            CategoryResponse: The updated category.
+
+        Raises:
+            HTTPException: If the category is not found.
+        """
         category = await self.repo.get_category(id=id)
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
         
         category.name = data.name
         await self.repo.save_category(category=category)
+        await self.repo.session.commit()
 
         return CategoryResponse.model_validate(category)
     
 
     async def delete_category(self, id: int) -> dict:
+        """
+        Deletes a category and all its associated documents and pages.
+
+        Args:
+            id (int): The ID of the category to delete.
+
+        Returns:
+            dict: A confirmation message.
+
+        Raises:
+            HTTPException: If the category is not found.
+        """
         category = await self.repo.get_category(id=id)
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
         
-        # Delete all documents in category
-        documents = await self.repo.get_category_documents(category_id=id)
-        for document in documents:
-            await self.delete_document(id=document.id)
-        
+        # Bulk delete optimization
+        document_ids = await self.repo.get_document_ids_by_categories(category_ids=[id])
+        if document_ids:
+            await self.repo.delete_pages_by_document_ids(document_ids=document_ids)
+            await self.repo.delete_documents_by_ids(document_ids=document_ids)
+
         # Delete category
         await self.repo.delete_category(category=category)
+        await self.repo.session.commit()
 
         return {"detail": "Category deleted"}
 
@@ -154,14 +296,60 @@ class AppService:
     # Documents
     # ====================
 
-    async def get_documents(self) -> DocumentsResponse:
-        documents = await self.repo.get_documents()
+    async def get_documents(
+        self, 
+        limit: int | None, 
+        offset: int,
+        category_id: int | None = None
+    ) -> DocumentsResponse:
+        """
+        Retrieves a list of all documents.
+
+        Args:
+            limit (int | None): The maximum number of documents to return.
+            offset (int): The number of documents to skip.
+            category_id (int | None): Filter by category ID.
+
+        Returns:
+            DocumentsResponse: A response object containing the list of documents.
+        """
+        documents = await self.repo.get_documents(limit=limit, offset=offset, category_id=category_id)
         return DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )
     
+    async def get_document(self, id: int) -> DocumentResponse:
+        """
+        Retrieves a specific document by ID.
+
+        Args:
+            id (int): The ID of the document.
+
+        Returns:
+            DocumentResponse: The requested document.
+
+        Raises:
+            HTTPException: If the document is not found.
+        """
+        document = await self.repo.get_document(id=id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return DocumentResponse.model_validate(document)
 
     async def create_document(self, data: DocumentCreateSchema) -> DocumentResponse:
+        """
+        Creates a new document with optional pages.
+
+        Args:
+            data (DocumentCreateSchema): The data for the new document.
+
+        Returns:
+            DocumentResponse: The created document.
+
+        Raises:
+            HTTPException: If a document with the same name and code already exists in the category.
+        """
         document = await self.repo.get_document_by_data(
             name=data.name, 
             code=data.code,
@@ -171,8 +359,11 @@ class AppService:
             raise HTTPException(status_code=400, detail="Document already exists")
         
         # Create document
-        document_data = data.model_dump(exclude={"pages"})
-        document = await self.repo.create_document(document_data=document_data)
+        document = await self.repo.create_document(
+            name=data.name,
+            code=data.code,
+            category_id=data.category_id
+        )
 
         if data.pages:
             for page_data in data.pages:
@@ -184,10 +375,24 @@ class AppService:
                 )
                 await self.repo.save_page(page)
         
+        await self.repo.session.commit()
         return DocumentResponse.model_validate(document)
 
     
     async def update_document(self, id: int, data: DocumentUpdateSchema) -> DocumentResponse:
+        """
+        Updates an existing document and its pages.
+
+        Args:
+            id (int): The ID of the document to update.
+            data (DocumentUpdateSchema): The new data for the document and pages.
+
+        Returns:
+            DocumentResponse: The updated document.
+
+        Raises:
+            HTTPException: If the document is not found.
+        """
         # Save document data
         document = await self.repo.get_document(id=id)
         if not document:
@@ -227,21 +432,32 @@ class AppService:
                 if page.id not in incoming_ids:
                     await self.repo.delete_page(page)
 
+        await self.repo.session.commit()
         return DocumentResponse.model_validate(document)
     
 
     async def delete_document(self, id: int) -> dict:
+        """
+        Deletes a document and all its pages.
+
+        Args:
+            id (int): The ID of the document to delete.
+
+        Returns:
+            dict: A confirmation message.
+
+        Raises:
+            HTTPException: If the document is not found.
+        """
         document = await self.repo.get_document(id=id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        # Delete document pages
-        pages = await self.repo.get_document_pages(document_id=id)
-        for page in pages:
-            await self.repo.delete_page(page=page)
-        
+        # Bulk delete pages
+        await self.repo.delete_pages_by_document_ids(document_ids=[id])
         # Delete document
         await self.repo.delete_document(document=document)
+        await self.repo.session.commit()
 
         return {"detail": "Document deleted"}
     
@@ -250,13 +466,35 @@ class AppService:
     # Pages
     # ====================
 
-    async def get_pages(self) -> PagesResponse:
-        pages = await self.repo.get_pages()
+    async def get_pages(self, limit: int | None, offset: int) -> PagesResponse:
+        """
+        Retrieves a list of all pages.
+
+        Args:
+            limit (int | None): The maximum number of pages to return.
+            offset (int): The number of pages to skip.
+
+        Returns:
+            PagesResponse: A response object containing the list of pages.
+        """
+        pages = await self.repo.get_pages(limit=limit, offset=offset)
         return PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
     
     async def get_page(self, id: int) -> PageResponse:
+        """
+        Retrieves a specific page by ID.
+
+        Args:
+            id (int): The ID of the page.
+
+        Returns:
+            PageResponse: The requested page.
+
+        Raises:
+            HTTPException: If the page is not found.
+        """
         page = await self.repo.get_page(id=id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
@@ -264,8 +502,19 @@ class AppService:
         return PageResponse.model_validate(page)
     
 
-    async def get_document_pages(self, document_id: int) -> PagesResponse:
-        pages = await self.repo.get_document_pages(document_id=document_id)
+    async def get_document_pages(self, document_id: int, limit: int | None, offset: int) -> PagesResponse:
+        """
+        Retrieves pages belonging to a specific document.
+
+        Args:
+            document_id (int): The ID of the document.
+            limit (int | None): The maximum number of pages to return.
+            offset (int): The number of pages to skip.
+
+        Returns:
+            PagesResponse: A response object containing the list of pages.
+        """
+        pages = await self.repo.get_document_pages(document_id=document_id, limit=limit, offset=offset)
         return PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
