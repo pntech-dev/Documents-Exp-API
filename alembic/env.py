@@ -13,6 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from core.config import settings  # noqa
 from db.base import Base  # noqa
+import models  # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

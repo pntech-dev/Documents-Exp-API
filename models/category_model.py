@@ -11,3 +11,7 @@ class Category(Base):
     
     group = relationship('Group', back_populates='categories')
     documents = relationship('Document', back_populates='category')
+
+    @property
+    def documents_count(self) -> int:
+        return len(self.documents)

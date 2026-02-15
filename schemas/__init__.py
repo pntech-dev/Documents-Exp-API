@@ -1,1 +1,2 @@
-from .auth_schema import UserLogin
+from .auth_schema import *
+from .app_schema import *
