@@ -7,6 +7,13 @@ class SearchResponse(BaseModel):
     result: list[dict]
 
 
+"""=== Tags ==="""
+class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+
+
 """=== Departments ==="""
 class DepartmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -82,6 +89,7 @@ class DocumentResponse(BaseModel):
     category_id: int
     code: str
     name: str
+    tags: list[TagResponse] = []
 
 
 class DocumentsResponse(BaseModel):
@@ -93,6 +101,7 @@ class DocumentCreateSchema(BaseModel):
     code: str
     name: str
     pages: list[PageUpdate] | None = None
+    tags: list[str] = []
 
 
 class DocumentUpdateSchema(BaseModel):
@@ -101,3 +110,4 @@ class DocumentUpdateSchema(BaseModel):
     code: str | None = None
     name: str | None = None
     pages: list[PageUpdate] | None = None
+    tags: list[str] | None = None

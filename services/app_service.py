@@ -358,11 +358,17 @@ class AppService:
         if document:
             raise HTTPException(status_code=400, detail="Document already exists")
         
+        # Handle tags
+        tags = []
+        if data.tags:
+            tags = await self.repo.get_or_create_tags(data.tags)
+
         # Create document
         document = await self.repo.create_document(
             name=data.name,
             code=data.code,
-            category_id=data.category_id
+            category_id=data.category_id,
+            tags=tags
         )
 
         if data.pages:
@@ -400,6 +406,11 @@ class AppService:
         
         document.code = data.code or document.code
         document.name = data.name or document.name
+
+        # Update tags if provided
+        if data.tags is not None:
+            tags = await self.repo.get_or_create_tags(data.tags)
+            document.tags = tags
 
         await self.repo.save_document(document=document)
 

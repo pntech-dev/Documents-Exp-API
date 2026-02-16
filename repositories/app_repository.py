@@ -2,7 +2,7 @@ from sqlalchemy import select, delete, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Group, Category, Document, Page
+from models import Group, Category, Document, Page, Tag
 
 
 class AppRepository:
@@ -36,7 +36,9 @@ class AppRepository:
             list[Document]: A list of matching documents.
         """
         words = query.split()
-        stmt = select(Document).where(Document.category_id == category_id)
+        stmt = select(Document).options(
+            selectinload(Document.tags)
+        ).where(Document.category_id == category_id)
 
         for word in words:
             pattern = f"%{word}%"
@@ -317,6 +319,8 @@ class AppRepository:
             list[Document]: A list of Document objects.
         """
         query = select(Document).options(
+            selectinload(Document.tags)
+        ).options(
             selectinload(Document.pages)
         ).where(Document.category_id == category_id)
         documents = await self.session.execute(query)
@@ -411,7 +415,9 @@ class AppRepository:
         Returns:
             Document | None: The Document object or None if not found.
         """
-        query = select(Document).where(Document.id == id)
+        query = select(Document).options(
+            selectinload(Document.tags)
+        ).where(Document.id == id)
         document = await self.session.execute(query)
         return document.scalar_one_or_none()
 
@@ -433,7 +439,9 @@ class AppRepository:
         Returns:
             list[Document]: A list of Document objects.
         """
-        query = select(Document).order_by(Document.id)
+        query = select(Document).options(
+            selectinload(Document.tags)
+        ).order_by(Document.id)
         
         if category_id is not None:
             query = query.where(Document.category_id == category_id)
@@ -472,7 +480,13 @@ class AppRepository:
         return document.scalar_one_or_none()
     
 
-    async def create_document(self, name: str, code: str, category_id: int) -> Document:
+    async def create_document(
+        self, 
+        name: str, 
+        code: str, 
+        category_id: int, 
+        tags: list[Tag] = []
+    ) -> Document:
         """
         Creates a new document.
 
@@ -480,6 +494,7 @@ class AppRepository:
             name (str): The document name.
             code (str): The document code.
             category_id (int): The category ID.
+            tags (list[Tag]): List of tag objects.
 
         Returns:
             Document: The created document object.
@@ -487,12 +502,14 @@ class AppRepository:
         document = Document(
             name=name,
             code=code,
-            category_id=category_id
+            category_id=category_id,
+            tags=tags
         )
         self.session.add(document)
         await self.session.flush()
         
         query = select(Document).options(
+            selectinload(Document.tags),
             selectinload(Document.pages)
         ).where(Document.id == document.id)
         result = await self.session.execute(query)
@@ -511,8 +528,13 @@ class AppRepository:
         """
         self.session.add(document)
         await self.session.flush()
-        await self.session.refresh(document)
-        return document
+        
+        query = select(Document).options(
+            selectinload(Document.tags),
+            selectinload(Document.pages)
+        ).where(Document.id == document.id)
+        result = await self.session.execute(query)
+        return result.scalar_one()
     
 
     async def delete_document(self, document: Document) -> None:
@@ -644,3 +666,34 @@ class AppRepository:
         if not document_ids: return
         stmt = delete(Page).where(Page.document_id.in_(document_ids))
         await self.session.execute(stmt)
+
+
+    # ====================
+    # Tags
+    # ====================
+
+    async def get_or_create_tags(self, tag_names: list[str]) -> list[Tag]:
+        """
+        Finds existing tags or creates new ones based on a list of names.
+        """
+        if not tag_names:
+            return []
+        
+        unique_names = list(set(tag_names))
+        
+        # Find existing
+        query = select(Tag).where(Tag.name.in_(unique_names))
+        result = await self.session.execute(query)
+        existing_tags = result.scalars().all()
+        existing_names = {tag.name for tag in existing_tags}
+        
+        tags = list(existing_tags)
+        
+        # Create missing
+        for name in unique_names:
+            if name not in existing_names:
+                new_tag = Tag(name=name)
+                self.session.add(new_tag)
+                tags.append(new_tag)
+        
+        return tags
