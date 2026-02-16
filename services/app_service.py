@@ -30,7 +30,8 @@ class AppService:
     async def search_in_category(
             self, 
             category_id: int, 
-            query: str
+            query: str,
+            tags: list[str] | None = None
     ) -> SearchResponse:
         """
         Searches for documents and pages within a specific category.
@@ -42,8 +43,14 @@ class AppService:
         Returns:
             SearchResponse: A response object containing the search results.
         """
-        documents = await self.repo.search_documents(category_id=category_id, query=query)
-        pages = await self.repo.search_pages(category_id=category_id, query=query)
+        # Clean tags: remove whitespace and empty strings just in case
+        clean_tags = [tag.strip() for tag in tags if tag.strip()] if tags else None
+
+        documents = await self.repo.search_documents(category_id=category_id, query=query, tags=clean_tags)
+        
+        pages = []
+        if query.strip():
+            pages = await self.repo.search_pages(category_id=category_id, query=query, tags=clean_tags)
 
         search_results = []
 

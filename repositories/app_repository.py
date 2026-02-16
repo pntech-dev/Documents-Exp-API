@@ -23,7 +23,8 @@ class AppRepository:
     async def search_documents(
             self, 
             category_id: int, 
-            query: str
+            query: str,
+            tags: list[str] | None = None
     ) -> list[Document]:
         """
         Searches for documents in a category matching the query.
@@ -31,6 +32,7 @@ class AppRepository:
         Args:
             category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            tags (list[str] | None): List of tags to filter by (AND logic).
 
         Returns:
             list[Document]: A list of matching documents.
@@ -39,6 +41,10 @@ class AppRepository:
         stmt = select(Document).options(
             selectinload(Document.tags)
         ).where(Document.category_id == category_id)
+
+        if tags:
+            for tag in tags:
+                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
 
         for word in words:
             pattern = f"%{word}%"
@@ -53,13 +59,14 @@ class AppRepository:
         return result.scalars().all()
     
 
-    async def search_pages(self, category_id: int, query: str) -> list[Page]:
+    async def search_pages(self, category_id: int, query: str, tags: list[str] | None = None) -> list[Page]:
         """
         Searches for pages in a category matching the query.
 
         Args:
             category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            tags (list[str] | None): List of tags to filter by (AND logic).
 
         Returns:
             list[Page]: A list of matching pages.
@@ -68,6 +75,10 @@ class AppRepository:
         stmt = select(Page).join(
             Document, Document.id == Page.document_id
         ).where(Document.category_id == category_id)
+
+        if tags:
+            for tag in tags:
+                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
 
         for word in words:
             pattern = f"%{word}%"

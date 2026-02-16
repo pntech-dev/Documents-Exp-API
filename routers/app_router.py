@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from schemas import *
@@ -22,13 +22,14 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
 async def category_search(
     category_id: int,
     query: str,
+    tags: list[str] | None = Query(None),
     service: AppService = Depends(get_app_service)
 ):
     """
     Searches for documents and pages within a specific category.
     """
     return await service.search_in_category(
-        category_id=category_id, query=query
+        category_id=category_id, query=query, tags=tags
     )
 
 
