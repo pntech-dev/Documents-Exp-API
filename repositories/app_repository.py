@@ -22,16 +22,18 @@ class AppRepository:
 
     async def search_documents(
             self, 
-            category_id: int, 
             query: str,
+            category_id: int | None = None,
+            group_id: int | None = None,
             tags: list[str] | None = None
     ) -> list[Document]:
         """
-        Searches for documents in a category matching the query.
+        Searches for documents in a category or group matching the query.
 
         Args:
-            category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            category_id (int | None): The category ID to search in.
+            group_id (int | None): The group ID to search in.
             tags (list[str] | None): List of tags to filter by (AND logic).
 
         Returns:
@@ -40,7 +42,12 @@ class AppRepository:
         words = query.split()
         stmt = select(Document).options(
             selectinload(Document.tags)
-        ).where(Document.category_id == category_id)
+        )
+
+        if category_id:
+            stmt = stmt.where(Document.category_id == category_id)
+        elif group_id:
+            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
 
         if tags:
             for tag in tags:
@@ -59,13 +66,20 @@ class AppRepository:
         return result.scalars().all()
     
 
-    async def search_pages(self, category_id: int, query: str, tags: list[str] | None = None) -> list[Page]:
+    async def search_pages(
+            self, 
+            query: str, 
+            category_id: int | None = None, 
+            group_id: int | None = None, 
+            tags: list[str] | None = None
+    ) -> list[Page]:
         """
-        Searches for pages in a category matching the query.
+        Searches for pages in a category or group matching the query.
 
         Args:
-            category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            category_id (int | None): The category ID to search in.
+            group_id (int | None): The group ID to search in.
             tags (list[str] | None): List of tags to filter by (AND logic).
 
         Returns:
@@ -74,7 +88,12 @@ class AppRepository:
         words = query.split()
         stmt = select(Page).join(
             Document, Document.id == Page.document_id
-        ).where(Document.category_id == category_id)
+        )
+
+        if category_id:
+            stmt = stmt.where(Document.category_id == category_id)
+        elif group_id:
+            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
 
         if tags:
             for tag in tags:
@@ -173,17 +192,18 @@ class AppRepository:
         return group
 
 
-    async def create_group(self, name: str) -> Group:
+    async def create_group(self, name: str, has_all_docs_search: bool = False) -> Group:
         """
         Creates a new group.
 
         Args:
             name (str): The name of the new group.
+            has_all_docs_search (bool): Flag to enable "All Documents" search.
 
         Returns:
             Group: The created group object.
         """
-        group = Group(name=name)
+        group = Group(name=name, has_all_docs_search=has_all_docs_search)
         self.session.add(group)
         await self.session.flush()
         
@@ -437,7 +457,8 @@ class AppRepository:
             self, 
             limit: int | None = None, 
             offset: int | None = None,
-            category_id: int | None = None
+            category_id: int | None = None,
+            group_id: int | None = None
     ) -> list[Document]:
         """
         Retrieves a list of documents with pagination.
@@ -446,6 +467,7 @@ class AppRepository:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
             category_id (int | None): Filter by category ID.
+            group_id (int | None): Filter by group ID.
 
         Returns:
             list[Document]: A list of Document objects.
@@ -456,6 +478,8 @@ class AppRepository:
         
         if category_id is not None:
             query = query.where(Document.category_id == category_id)
+        elif group_id is not None:
+            query = query.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
             
         if limit is not None:
             query = query.limit(limit)

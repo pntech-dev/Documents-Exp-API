@@ -27,18 +27,20 @@ class AppService:
         self.repo = AppRepository(db)
 
 
-    async def search_in_category(
+    async def search(
             self, 
-            category_id: int, 
             query: str,
+            category_id: int | None = None,
+            group_id: int | None = None,
             tags: list[str] | None = None
     ) -> SearchResponse:
         """
-        Searches for documents and pages within a specific category.
+        Searches for documents and pages within a specific category or group.
 
         Args:
-            category_id (int): The ID of the category to search in.
             query (str): The search query string.
+            category_id (int | None): The ID of the category to search in.
+            group_id (int | None): The ID of the group to search in.
 
         Returns:
             SearchResponse: A response object containing the search results.
@@ -46,11 +48,24 @@ class AppService:
         # Clean tags: remove whitespace and empty strings just in case
         clean_tags = [tag.strip() for tag in tags if tag.strip()] if tags else None
 
-        documents = await self.repo.search_documents(category_id=category_id, query=query, tags=clean_tags)
+        if not category_id and not group_id:
+            raise HTTPException(status_code=400, detail="Either category_id or group_id must be provided")
+
+        documents = await self.repo.search_documents(
+            query=query, 
+            category_id=category_id, 
+            group_id=group_id, 
+            tags=clean_tags
+        )
         
         pages = []
         if query.strip():
-            pages = await self.repo.search_pages(category_id=category_id, query=query, tags=clean_tags)
+            pages = await self.repo.search_pages(
+                query=query, 
+                category_id=category_id, 
+                group_id=group_id, 
+                tags=clean_tags
+            )
 
         search_results = []
 
@@ -101,7 +116,7 @@ class AppService:
         if group:
             raise HTTPException(status_code=400, detail="Group already exists")
         
-        group = await self.repo.create_group(name=data.name)
+        group = await self.repo.create_group(name=data.name, has_all_docs_search=data.has_all_docs_search)
         await self.repo.session.commit()
         return DepartmentResponse.model_validate(group)
     
@@ -125,6 +140,7 @@ class AppService:
             raise HTTPException(status_code=404, detail="Group not found")
         
         group.name = data.name
+        group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
 
@@ -307,7 +323,8 @@ class AppService:
         self, 
         limit: int | None, 
         offset: int,
-        category_id: int | None = None
+        category_id: int | None = None,
+        group_id: int | None = None
     ) -> DocumentsResponse:
         """
         Retrieves a list of all documents.
@@ -316,11 +333,17 @@ class AppService:
             limit (int | None): The maximum number of documents to return.
             offset (int): The number of documents to skip.
             category_id (int | None): Filter by category ID.
+            group_id (int | None): Filter by group ID.
 
         Returns:
             DocumentsResponse: A response object containing the list of documents.
         """
-        documents = await self.repo.get_documents(limit=limit, offset=offset, category_id=category_id)
+        documents = await self.repo.get_documents(
+            limit=limit, 
+            offset=offset, 
+            category_id=category_id,
+            group_id=group_id
+        )
         return DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )

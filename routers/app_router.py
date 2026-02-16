@@ -18,18 +18,22 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
 # Search
 # ====================
 
-@router.get("/category_search", response_model=SearchResponse)
-async def category_search(
-    category_id: int,
+@router.get("/search", response_model=SearchResponse)
+async def search(
     query: str,
+    group_id: int | None = Query(None),
+    category_id: int | None = Query(None),
     tags: list[str] | None = Query(None),
     service: AppService = Depends(get_app_service)
 ):
     """
-    Searches for documents and pages within a specific category.
+    Searches for documents and pages within a specific category or group.
     """
-    return await service.search_in_category(
-        category_id=category_id, query=query, tags=tags
+    return await service.search(
+        query=query, 
+        category_id=category_id, 
+        group_id=group_id, 
+        tags=tags
     )
 
 
@@ -176,15 +180,17 @@ async def get_documents(
     offset: int = 0,
     limit: int | None = None,
     category_id: int | None = None,
+    group_id: int | None = Query(None),
     service: AppService = Depends(get_app_service)
 ):
     """
-    Retrieves a list of all documents.
+    Retrieves a list of documents. Can be filtered by category or group.
     """
     return await service.get_documents(
         limit=limit, 
         offset=offset,
-        category_id=category_id
+        category_id=category_id,
+        group_id=group_id
     )
 
 

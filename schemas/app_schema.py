@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SearchResponse(BaseModel):
@@ -20,7 +20,13 @@ class DepartmentResponse(BaseModel):
 
     id: int
     name: str
+    has_all_docs_search: bool
     documents_count: int
+
+    @field_validator("has_all_docs_search", mode="before")
+    @classmethod
+    def set_has_all_docs_search(cls, v):
+        return v or False
 
 
 class DepartmentsResponse(BaseModel):
@@ -29,10 +35,12 @@ class DepartmentsResponse(BaseModel):
 
 class DepartmentCreateSchema(BaseModel):
     name: str
+    has_all_docs_search: bool = False
 
 
 class DepartmentUpdate(BaseModel):
     name: str
+    has_all_docs_search: bool
 
 
 """=== Categories ==="""
