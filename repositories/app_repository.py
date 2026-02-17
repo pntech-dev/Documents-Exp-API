@@ -1,5 +1,5 @@
 from sqlalchemy import select, delete, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Group, Category, Document, Page, Tag
@@ -27,7 +27,8 @@ class AppRepository:
             group_id: int | None = None,
             tags: list[str] | None = None,
             exact_match: bool = False,
-            search_fields: list[str] | None = None
+            search_fields: list[str] | None = None,
+            show_for_guest: bool = False
     ) -> list[Document]:
         """
         Searches for documents in a category or group matching the query.
@@ -47,10 +48,19 @@ class AppRepository:
             selectinload(Document.tags)
         )
 
+        joined_category = False
+
         if category_id:
             stmt = stmt.where(Document.category_id == category_id)
         elif group_id:
             stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
+            joined_category = True
+
+        if show_for_guest:
+            if not joined_category:
+                stmt = stmt.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            stmt = stmt.where(Category.show_for_guest == True)
 
         if tags:
             for tag in tags:
@@ -91,7 +101,8 @@ class AppRepository:
             group_id: int | None = None, 
             tags: list[str] | None = None,
             exact_match: bool = False,
-            search_fields: list[str] | None = None
+            search_fields: list[str] | None = None,
+            show_for_guest: bool = False
     ) -> list[Page]:
         """
         Searches for pages in a category or group matching the query.
@@ -111,10 +122,19 @@ class AppRepository:
             Document, Document.id == Page.document_id
         )
 
+        joined_category = False
+
         if category_id:
             stmt = stmt.where(Document.category_id == category_id)
         elif group_id:
             stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
+            joined_category = True
+
+        if show_for_guest:
+            if not joined_category:
+                stmt = stmt.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            stmt = stmt.where(Category.show_for_guest == True)
 
         if tags:
             for tag in tags:
@@ -175,6 +195,9 @@ class AppRepository:
 
         if show_for_guest:
             query = query.where(Group.show_for_guest == True)
+            query = query.options(
+                with_loader_criteria(Category, Category.show_for_guest == True)
+            )
 
         query = query.order_by(Group.id)
         if limit is not None:
@@ -297,7 +320,8 @@ class AppRepository:
     async def get_categories(
             self, 
             limit: int | None = None, 
-            offset: int | None = None
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Category]:
         """
         Retrieves a list of categories with pagination.
@@ -305,6 +329,7 @@ class AppRepository:
         Args:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter categories visible for guests.
 
         Returns:
             list[Category]: A list of Category objects.
@@ -312,6 +337,13 @@ class AppRepository:
         query = select(Category).options(
             selectinload(Category.documents)
         ).order_by(Category.id)
+
+        if show_for_guest:
+            query = query.where(Category.show_for_guest == True)
+            query = query.options(
+                with_loader_criteria(Category, Category.show_for_guest == True)
+            )
+
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -365,8 +397,9 @@ class AppRepository:
     async def get_group_categories(
             self, 
             group_id: int, 
-            limit: int | None = None, 
-            offset: int | None = None
+            limit: int | None = None,
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Category]:
         """
         Retrieves categories for a specific group.
@@ -375,6 +408,7 @@ class AppRepository:
             group_id (int): The group ID.
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter categories visible for guests.
 
         Returns:
             list[Category]: A list of Category objects.
@@ -382,6 +416,10 @@ class AppRepository:
         query = select(Category).options(
             selectinload(Category.documents)
         ).where(Category.group_id == group_id).order_by(Category.id)
+
+        if show_for_guest:
+            query = query.where(Category.show_for_guest == True)
+
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -409,18 +447,28 @@ class AppRepository:
         return documents.scalars().all()
     
 
-    async def create_category(self, name: str, group_id: int) -> Category:
+    async def create_category(
+            self, 
+            name: str, 
+            group_id: int,
+            show_for_guest: bool = False,
+    ) -> Category:
         """
         Creates a new category.
 
         Args:
             name (str): The category name.
             group_id (int): The ID of the group the category belongs to.
+            show_for_guest (bool): Visibility for guests.
+            has_all_docs_search (bool): Search flag.
 
         Returns:
             Category: The created category object.
         """
-        category = Category(name=name, group_id=group_id)
+        category = Category(
+            name=name, group_id=group_id,
+            show_for_guest=show_for_guest
+        )
         self.session.add(category)
         await self.session.flush()
         
@@ -509,7 +557,8 @@ class AppRepository:
             limit: int | None = None, 
             offset: int | None = None,
             category_id: int | None = None,
-            group_id: int | None = None
+            group_id: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Document]:
         """
         Retrieves a list of documents with pagination.
@@ -527,10 +576,22 @@ class AppRepository:
             selectinload(Document.tags)
         ).order_by(Document.id)
         
+        joined_category = False
+
+        if group_id is not None:
+            query = query.join(
+                Category, Document.category_id == Category.id
+            ).where(Category.group_id == group_id)
+            joined_category = True
+            
+        if show_for_guest:
+            if not joined_category:
+                query = query.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            query = query.where(Category.show_for_guest == True)
+
         if category_id is not None:
             query = query.where(Document.category_id == category_id)
-        elif group_id is not None:
-            query = query.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
             
         if limit is not None:
             query = query.limit(limit)

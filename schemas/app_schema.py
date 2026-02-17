@@ -58,7 +58,13 @@ class CategoryResponse(BaseModel):
     id: int
     group_id: int
     name: str
+    show_for_guest: bool
     documents_count: int
+
+    @field_validator("show_for_guest", mode="before")
+    @classmethod
+    def set_show_for_guest(cls, v):
+        return v or False
 
 
 class CategoriesResponse(BaseModel):
@@ -68,9 +74,12 @@ class CategoriesResponse(BaseModel):
 class CategoryCreateSchema(BaseModel):
     group_id: int
     name: str
+    show_for_guest: bool = False
+
 
 class CategoryUpdateSchema(BaseModel):
     name: str
+    show_for_guest: bool
 
 
 """=== Pages ==="""

@@ -7,7 +7,7 @@ from schemas import (
     DepartmentResponse, DepartmentsResponse,
     DepartmentCreateSchema, DepartmentUpdate,
     CategoryResponse, CategoriesResponse,
-    CategoryCreateSchema,
+    CategoryCreateSchema, CategoryUpdateSchema,
     DocumentResponse, DocumentsResponse,
     DocumentUpdateSchema, DocumentCreateSchema,
     PageResponse, PagesResponse
@@ -35,8 +35,8 @@ class AppService:
             category_id: int | None = None,
             exact_match: bool = False,
             include_pages: bool = True,
-            search_fields: list[str] = ["code", "name"]
-            
+            search_fields: list[str] = ["code", "name"],
+            is_guest: bool = False
     ) -> SearchResponse:
         """
         Searches for documents and pages within a specific category or group.
@@ -61,7 +61,8 @@ class AppService:
             group_id=group_id, 
             tags=clean_tags,
             exact_match=exact_match,
-            search_fields=search_fields
+            search_fields=search_fields,
+            show_for_guest=is_guest
         )
         
         pages = []
@@ -72,7 +73,8 @@ class AppService:
                 group_id=group_id, 
                 tags=clean_tags,
                 exact_match=exact_match,
-                search_fields=search_fields
+                search_fields=search_fields,
+                show_for_guest=is_guest
             )
 
         search_results = []
@@ -197,18 +199,28 @@ class AppService:
     # Categories
     # ====================
 
-    async def get_categories(self, limit: int | None, offset: int) -> CategoriesResponse:
+    async def get_categories(
+            self, 
+            limit: int | None, 
+            offset: int, 
+            is_guest: bool = False
+    ) -> CategoriesResponse:
         """
         Retrieves a list of all categories.
 
         Args:
             limit (int | None): The maximum number of categories to return.
             offset (int): The number of categories to skip.
+            is_guest (bool): Whether the requester is a guest.
 
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
-        categories = await self.repo.get_categories(limit=limit, offset=offset)
+        categories = await self.repo.get_categories(
+            limit=limit, 
+            offset=offset, 
+            show_for_guest=is_guest
+        )
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
@@ -233,7 +245,13 @@ class AppService:
         return CategoryResponse.model_validate(category)
 
 
-    async def get_group_categories(self, group_id: int, limit: int | None, offset: int) -> CategoriesResponse:
+    async def get_group_categories(
+            self, 
+            group_id: int, 
+            limit: int | None, 
+            offset: int, 
+            is_guest: bool = False
+    ) -> CategoriesResponse:
         """
         Retrieves categories belonging to a specific group.
 
@@ -241,11 +259,17 @@ class AppService:
             group_id (int): The ID of the group.
             limit (int | None): The maximum number of categories to return.
             offset (int): The number of categories to skip.
+            is_guest (bool): Whether the requester is a guest.
 
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
-        categories = await self.repo.get_group_categories(group_id=group_id, limit=limit, offset=offset)
+        categories = await self.repo.get_group_categories(
+            group_id=group_id, 
+            limit=limit, 
+            offset=offset, 
+            show_for_guest=is_guest
+        )
         return CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
@@ -268,19 +292,26 @@ class AppService:
         if category:
             raise HTTPException(status_code=400, detail="Category already exists")
 
-        category = await self.repo.create_category(name=data.name, group_id=data.group_id)
+        category = await self.repo.create_category(
+            name=data.name, 
+            group_id=data.group_id,
+            show_for_guest=data.show_for_guest,
+        )
         await self.repo.session.commit()
 
         return CategoryResponse.model_validate(category)
     
 
-    async def update_category(self, id: int, data: CategoryCreateSchema) -> CategoryResponse:
+    async def update_category(
+            self, id: int, 
+            data: CategoryUpdateSchema
+    ) -> CategoryResponse:
         """
         Updates an existing category.
 
         Args:
             id (int): The ID of the category to update.
-            data (CategoryCreateSchema): The new data for the category.
+            data (CategoryUpdateSchema): The new data for the category.
 
         Returns:
             CategoryResponse: The updated category.
@@ -293,6 +324,7 @@ class AppService:
             raise HTTPException(status_code=404, detail="Category not found")
         
         category.name = data.name
+        category.show_for_guest = data.show_for_guest
         await self.repo.save_category(category=category)
         await self.repo.session.commit()
 
@@ -338,7 +370,8 @@ class AppService:
         limit: int | None, 
         offset: int,
         category_id: int | None = None,
-        group_id: int | None = None
+        group_id: int | None = None,
+        is_guest: bool = False
     ) -> DocumentsResponse:
         """
         Retrieves a list of all documents.
@@ -356,7 +389,8 @@ class AppService:
             limit=limit, 
             offset=offset, 
             category_id=category_id,
-            group_id=group_id
+            group_id=group_id,
+            show_for_guest=is_guest
         )
         return DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]

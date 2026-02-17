@@ -58,11 +58,13 @@ async def search(
     exact_match: bool = False,
     include_pages: bool = True,
     search_fields: list[str] = Query(default=["code", "name"]),
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Searches for documents and pages within a specific category or group.
     """
+    is_guest = user is None
     return await service.search(
         query=query, 
         tags=tags,
@@ -70,7 +72,8 @@ async def search(
         category_id=category_id, 
         exact_match=exact_match, 
         include_pages=include_pages, 
-        search_fields=search_fields
+        search_fields=search_fields,
+        is_guest=is_guest
     )
 
 
@@ -137,12 +140,14 @@ async def delete_group(
 async def get_categories(
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves a list of all categories.
     """
-    return await service.get_categories(limit=limit, offset=offset)
+    is_guest = user is None
+    return await service.get_categories(limit=limit, offset=offset, is_guest=is_guest)
 
 
 @router.get("/categories/{id}", response_model=CategoryResponse)
@@ -161,15 +166,18 @@ async def get_group_categories(
     group_id: int,
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves categories belonging to a specific group.
     """
+    is_guest = user is None
     return await service.get_group_categories(
         group_id=group_id, 
         limit=limit, 
-        offset=offset
+        offset=offset,
+        is_guest=is_guest
     )
 
 
@@ -220,16 +228,19 @@ async def get_documents(
     limit: int | None = None,
     category_id: int | None = None,
     group_id: int | None = Query(None),
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves a list of documents. Can be filtered by category or group.
     """
+    is_guest = user is None
     return await service.get_documents(
         limit=limit, 
         offset=offset,
         category_id=category_id,
-        group_id=group_id
+        group_id=group_id,
+        is_guest=is_guest
     )
 
 
