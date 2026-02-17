@@ -155,7 +155,8 @@ class AppRepository:
     async def get_groups(
             self, 
             limit: int | None = None, 
-            offset: int | None = None
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Group]:
         """
         Retrieves a list of groups with pagination.
@@ -163,13 +164,19 @@ class AppRepository:
         Args:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter groups visible for guests.
 
         Returns:
             list[Group]: A list of Group objects.
         """
         query = select(Group).options(
             selectinload(Group.categories).selectinload(Category.documents)
-        ).order_by(Group.id)
+        )
+
+        if show_for_guest:
+            query = query.where(Group.show_for_guest == True)
+
+        query = query.order_by(Group.id)
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -228,7 +235,11 @@ class AppRepository:
         return group
 
 
-    async def create_group(self, name: str, has_all_docs_search: bool = False) -> Group:
+    async def create_group(
+            self, name: str, 
+            show_for_guest: bool = False, 
+            has_all_docs_search: bool = False
+    ) -> Group:
         """
         Creates a new group.
 
@@ -239,7 +250,11 @@ class AppRepository:
         Returns:
             Group: The created group object.
         """
-        group = Group(name=name, has_all_docs_search=has_all_docs_search)
+        group = Group(
+            name=name, 
+            show_for_guest=show_for_guest, 
+            has_all_docs_search=has_all_docs_search
+        )
         self.session.add(group)
         await self.session.flush()
         

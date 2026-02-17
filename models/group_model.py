@@ -7,6 +7,7 @@ class Group(Base):
     __tablename__ = 'groups'
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
+    show_for_guest = Column(Boolean, default=False)
     has_all_docs_search = Column(Boolean, default=False)
     
     categories = relationship('Category', back_populates='group')

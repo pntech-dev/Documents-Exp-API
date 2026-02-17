@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, Query
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import jwt, JWTError
 
 from schemas import *
 from db.deps import get_db
 from services import AppService
 from utils import get_current_user
+from core.config import settings
+from repositories import AuthRepository
 
 
 router = APIRouter(prefix="/app", tags=["App"])
@@ -12,6 +16,33 @@ router = APIRouter(prefix="/app", tags=["App"])
 
 def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+async def get_optional_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> UserResponse | None:
+    """
+    Returns the current user if the token is valid, otherwise returns None.
+    Does not raise 401 error.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    
+    repo = AuthRepository(db)
+    user = await repo.get_user_by_id(int(user_id))
+    if not user:
+        return None
+    return UserResponse.model_validate(user)
 
 
 # ====================
@@ -51,12 +82,14 @@ async def search(
 async def get_groups(
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves a list of groups (departments).
     """
-    return await service.get_groups(limit=limit, offset=offset)
+    is_guest = user is None
+    return await service.get_groups(limit=limit, offset=offset, is_guest=is_guest)
 
 
 @router.post("/groups", response_model=DepartmentResponse)

@@ -90,18 +90,19 @@ class AppService:
     # Departments
     # ====================
 
-    async def get_groups(self, limit: int | None, offset: int) -> DepartmentsResponse:
+    async def get_groups(self, limit: int | None, offset: int, is_guest: bool = False) -> DepartmentsResponse:
         """
         Retrieves a list of groups (departments).
 
         Args:
             limit (int | None): The maximum number of groups to return.
             offset (int): The number of groups to skip.
+            is_guest (bool): Whether the requester is a guest.
 
         Returns:
             DepartmentsResponse: A response object containing the list of groups.
         """
-        groups = await self.repo.get_groups(limit=limit, offset=offset)
+        groups = await self.repo.get_groups(limit=limit, offset=offset, show_for_guest=is_guest)
         return DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
@@ -124,7 +125,11 @@ class AppService:
         if group:
             raise HTTPException(status_code=400, detail="Group already exists")
         
-        group = await self.repo.create_group(name=data.name, has_all_docs_search=data.has_all_docs_search)
+        group = await self.repo.create_group(
+            name=data.name, 
+            show_for_guest=data.show_for_guest,
+            has_all_docs_search=data.has_all_docs_search
+        )
         await self.repo.session.commit()
         return DepartmentResponse.model_validate(group)
     
@@ -148,6 +153,7 @@ class AppService:
             raise HTTPException(status_code=404, detail="Group not found")
         
         group.name = data.name
+        group.show_for_guest = data.show_for_guest
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()

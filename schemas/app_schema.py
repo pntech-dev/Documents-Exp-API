@@ -20,8 +20,14 @@ class DepartmentResponse(BaseModel):
 
     id: int
     name: str
+    show_for_guest: bool
     has_all_docs_search: bool
     documents_count: int
+
+    @field_validator("show_for_guest", mode="before")
+    @classmethod
+    def set_show_for_guest(cls, v):
+        return v or False
 
     @field_validator("has_all_docs_search", mode="before")
     @classmethod
@@ -35,11 +41,13 @@ class DepartmentsResponse(BaseModel):
 
 class DepartmentCreateSchema(BaseModel):
     name: str
+    show_for_guest: bool = False
     has_all_docs_search: bool = False
 
 
 class DepartmentUpdate(BaseModel):
     name: str
+    show_for_guest: bool
     has_all_docs_search: bool
 
 
