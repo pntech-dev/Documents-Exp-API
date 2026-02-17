@@ -30,9 +30,13 @@ class AppService:
     async def search(
             self, 
             query: str,
-            category_id: int | None = None,
+            tags: list[str] | None = None,
             group_id: int | None = None,
-            tags: list[str] | None = None
+            category_id: int | None = None,
+            exact_match: bool = False,
+            include_pages: bool = True,
+            search_fields: list[str] = ["code", "name"]
+            
     ) -> SearchResponse:
         """
         Searches for documents and pages within a specific category or group.
@@ -55,16 +59,20 @@ class AppService:
             query=query, 
             category_id=category_id, 
             group_id=group_id, 
-            tags=clean_tags
+            tags=clean_tags,
+            exact_match=exact_match,
+            search_fields=search_fields
         )
         
         pages = []
-        if query.strip():
+        if include_pages and query.strip():
             pages = await self.repo.search_pages(
                 query=query, 
                 category_id=category_id, 
                 group_id=group_id, 
-                tags=clean_tags
+                tags=clean_tags,
+                exact_match=exact_match,
+                search_fields=search_fields
             )
 
         search_results = []

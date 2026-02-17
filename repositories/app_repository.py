@@ -25,7 +25,9 @@ class AppRepository:
             query: str,
             category_id: int | None = None,
             group_id: int | None = None,
-            tags: list[str] | None = None
+            tags: list[str] | None = None,
+            exact_match: bool = False,
+            search_fields: list[str] | None = None
     ) -> list[Document]:
         """
         Searches for documents in a category or group matching the query.
@@ -35,11 +37,12 @@ class AppRepository:
             category_id (int | None): The category ID to search in.
             group_id (int | None): The group ID to search in.
             tags (list[str] | None): List of tags to filter by (AND logic).
+            exact_match (bool): If True, match the whole query string.
+            search_fields (list[str] | None): Fields to search in ('name', 'code').
 
         Returns:
             list[Document]: A list of matching documents.
         """
-        words = query.split()
         stmt = select(Document).options(
             selectinload(Document.tags)
         )
@@ -53,13 +56,28 @@ class AppRepository:
             for tag in tags:
                 stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
 
-        for word in words:
-            pattern = f"%{word}%"
-            stmt = stmt.where(
-                or_(
-                    Document.name.ilike(pattern), Document.code.ilike(pattern)
-                )
-            )
+        # Determine search columns
+        fields_map = {"name": Document.name, "code": Document.code}
+        target_columns = []
+        if search_fields:
+            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
+        
+        if not target_columns:
+            target_columns = [Document.name, Document.code]
+
+        if exact_match:
+            # Exact match (whole string, case-insensitive)
+            conditions = [col.ilike(query) for col in target_columns]
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+        else:
+            # Word-based partial match
+            words = query.split()
+            for word in words:
+                pattern = f"%{word}%"
+                conditions = [col.ilike(pattern) for col in target_columns]
+                if conditions:
+                    stmt = stmt.where(or_(*conditions))
 
         stmt = stmt.distinct()
         result = await self.session.execute(stmt)
@@ -71,7 +89,9 @@ class AppRepository:
             query: str, 
             category_id: int | None = None, 
             group_id: int | None = None, 
-            tags: list[str] | None = None
+            tags: list[str] | None = None,
+            exact_match: bool = False,
+            search_fields: list[str] | None = None
     ) -> list[Page]:
         """
         Searches for pages in a category or group matching the query.
@@ -81,11 +101,12 @@ class AppRepository:
             category_id (int | None): The category ID to search in.
             group_id (int | None): The group ID to search in.
             tags (list[str] | None): List of tags to filter by (AND logic).
+            exact_match (bool): If True, match the whole query string.
+            search_fields (list[str] | None): Fields to search in ('name', 'code').
 
         Returns:
             list[Page]: A list of matching pages.
         """
-        words = query.split()
         stmt = select(Page).join(
             Document, Document.id == Page.document_id
         )
@@ -99,13 +120,28 @@ class AppRepository:
             for tag in tags:
                 stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
 
-        for word in words:
-            pattern = f"%{word}%"
-            stmt = stmt.where(
-                or_(
-                    Page.name.ilike(pattern), Page.designation.ilike(pattern)
-                )
-            )
+        # Determine search columns (map 'code' to 'designation' for pages)
+        fields_map = {"name": Page.name, "code": Page.designation}
+        target_columns = []
+        if search_fields:
+            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
+        
+        if not target_columns:
+            target_columns = [Page.name, Page.designation]
+
+        if exact_match:
+            # Exact match (whole string, case-insensitive)
+            conditions = [col.ilike(query) for col in target_columns]
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+        else:
+            # Word-based partial match
+            words = query.split()
+            for word in words:
+                pattern = f"%{word}%"
+                conditions = [col.ilike(pattern) for col in target_columns]
+                if conditions:
+                    stmt = stmt.where(or_(*conditions))
 
         stmt = stmt.distinct()
         result = await self.session.execute(stmt)

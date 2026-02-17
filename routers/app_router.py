@@ -21,9 +21,12 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
 @router.get("/search", response_model=SearchResponse)
 async def search(
     query: str,
+    tags: list[str] | None = Query(None),
     group_id: int | None = Query(None),
     category_id: int | None = Query(None),
-    tags: list[str] | None = Query(None),
+    exact_match: bool = False,
+    include_pages: bool = True,
+    search_fields: list[str] = Query(default=["code", "name"]),
     service: AppService = Depends(get_app_service)
 ):
     """
@@ -31,9 +34,12 @@ async def search(
     """
     return await service.search(
         query=query, 
-        category_id=category_id, 
+        tags=tags,
         group_id=group_id, 
-        tags=tags
+        category_id=category_id, 
+        exact_match=exact_match, 
+        include_pages=include_pages, 
+        search_fields=search_fields
     )
 
 
