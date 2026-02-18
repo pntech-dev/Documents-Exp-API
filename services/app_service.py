@@ -258,6 +258,7 @@ class AppService:
         await self._clear_cache(cache_key="groups:*")
         await self._clear_cache(cache_key="documents:*")
         await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Group deleted"}
 
@@ -473,6 +474,7 @@ class AppService:
         await self._clear_cache(cache_key="categories:*")
         await self._clear_cache(cache_key="documents:*")
         await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Category deleted"}
 
@@ -606,6 +608,7 @@ class AppService:
         await self.repo.session.commit()
         await self._clear_cache(cache_key="documents:*")
         await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return DocumentResponse.model_validate(document)
 
@@ -671,6 +674,7 @@ class AppService:
         await self.repo.session.commit()
         await self._clear_cache(cache_key="documents:*")
         await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return DocumentResponse.model_validate(document)
     
@@ -699,6 +703,7 @@ class AppService:
         await self.repo.session.commit()
         await self._clear_cache(cache_key="documents:*")
         await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Document deleted"}
     
@@ -718,10 +723,20 @@ class AppService:
         Returns:
             PagesResponse: A response object containing the list of pages.
         """
+        # 1. Cache Key
+        cache_key = f"pages:list:{limit}:{offset}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PagesResponse.model_validate_json(cached_data)
+
         pages = await self.repo.get_pages(limit=limit, offset=offset)
-        return PagesResponse(
+        response = PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
+        await self._save_cache(cache_key, response)
+        return response
     
     async def get_page(self, id: int) -> PageResponse:
         """
@@ -736,11 +751,21 @@ class AppService:
         Raises:
             HTTPException: If the page is not found.
         """
+        # 1. Cache Key
+        cache_key = f"pages:{id}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PageResponse.model_validate_json(cached_data)
+
         page = await self.repo.get_page(id=id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
         
-        return PageResponse.model_validate(page)
+        response = PageResponse.model_validate(page)
+        await self._save_cache(cache_key, response)
+        return response
     
 
     async def get_document_pages(self, document_id: int, limit: int | None, offset: int) -> PagesResponse:
@@ -755,10 +780,20 @@ class AppService:
         Returns:
             PagesResponse: A response object containing the list of pages.
         """
+        # 1. Cache Key
+        cache_key = f"pages:doc:{document_id}:{limit}:{offset}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PagesResponse.model_validate_json(cached_data)
+
         pages = await self.repo.get_document_pages(document_id=document_id, limit=limit, offset=offset)
-        return PagesResponse(
+        response = PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
+        await self._save_cache(cache_key, response)
+        return response
     
 
     # ====================
