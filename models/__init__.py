@@ -6,3 +6,4 @@ from .page_model import Page
 from .refresh_tokens_model import RefreshToken
 from .verification_codes_model import VerificationCode
 from .reset_tokens_model import ResetToken
+from .tag_model import Tag

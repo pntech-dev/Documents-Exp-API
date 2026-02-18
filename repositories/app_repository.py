@@ -1,8 +1,8 @@
 from sqlalchemy import select, delete, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Group, Category, Document, Page
+from models import Group, Category, Document, Page, Tag
 
 
 class AppRepository:
@@ -22,58 +22,146 @@ class AppRepository:
 
     async def search_documents(
             self, 
-            category_id: int, 
-            query: str
+            query: str,
+            category_id: int | None = None,
+            group_id: int | None = None,
+            tags: list[str] | None = None,
+            exact_match: bool = False,
+            search_fields: list[str] | None = None,
+            show_for_guest: bool = False
     ) -> list[Document]:
         """
-        Searches for documents in a category matching the query.
+        Searches for documents in a category or group matching the query.
 
         Args:
-            category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            category_id (int | None): The category ID to search in.
+            group_id (int | None): The group ID to search in.
+            tags (list[str] | None): List of tags to filter by (AND logic).
+            exact_match (bool): If True, match the whole query string.
+            search_fields (list[str] | None): Fields to search in ('name', 'code').
 
         Returns:
             list[Document]: A list of matching documents.
         """
-        words = query.split()
-        stmt = select(Document).where(Document.category_id == category_id)
+        stmt = select(Document).options(
+            selectinload(Document.tags)
+        )
 
-        for word in words:
-            pattern = f"%{word}%"
-            stmt = stmt.where(
-                or_(
-                    Document.name.ilike(pattern), Document.code.ilike(pattern)
-                )
-            )
+        joined_category = False
+
+        if category_id:
+            stmt = stmt.where(Document.category_id == category_id)
+        elif group_id:
+            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
+            joined_category = True
+
+        if show_for_guest:
+            if not joined_category:
+                stmt = stmt.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            stmt = stmt.where(Category.show_for_guest == True)
+
+        if tags:
+            for tag in tags:
+                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
+
+        # Determine search columns
+        fields_map = {"name": Document.name, "code": Document.code}
+        target_columns = []
+        if search_fields:
+            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
+        
+        if not target_columns:
+            target_columns = [Document.name, Document.code]
+
+        if exact_match:
+            # Exact match (whole string, case-insensitive)
+            conditions = [col.ilike(query) for col in target_columns]
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+        else:
+            # Word-based partial match
+            words = query.split()
+            for word in words:
+                pattern = f"%{word}%"
+                conditions = [col.ilike(pattern) for col in target_columns]
+                if conditions:
+                    stmt = stmt.where(or_(*conditions))
 
         stmt = stmt.distinct()
         result = await self.session.execute(stmt)
         return result.scalars().all()
     
 
-    async def search_pages(self, category_id: int, query: str) -> list[Page]:
+    async def search_pages(
+            self, 
+            query: str, 
+            category_id: int | None = None, 
+            group_id: int | None = None, 
+            tags: list[str] | None = None,
+            exact_match: bool = False,
+            search_fields: list[str] | None = None,
+            show_for_guest: bool = False
+    ) -> list[Page]:
         """
-        Searches for pages in a category matching the query.
+        Searches for pages in a category or group matching the query.
 
         Args:
-            category_id (int): The category ID to search in.
             query (str): The search string (space-separated words).
+            category_id (int | None): The category ID to search in.
+            group_id (int | None): The group ID to search in.
+            tags (list[str] | None): List of tags to filter by (AND logic).
+            exact_match (bool): If True, match the whole query string.
+            search_fields (list[str] | None): Fields to search in ('name', 'code').
 
         Returns:
             list[Page]: A list of matching pages.
         """
-        words = query.split()
         stmt = select(Page).join(
             Document, Document.id == Page.document_id
-        ).where(Document.category_id == category_id)
+        )
 
-        for word in words:
-            pattern = f"%{word}%"
-            stmt = stmt.where(
-                or_(
-                    Page.name.ilike(pattern), Page.designation.ilike(pattern)
-                )
-            )
+        joined_category = False
+
+        if category_id:
+            stmt = stmt.where(Document.category_id == category_id)
+        elif group_id:
+            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
+            joined_category = True
+
+        if show_for_guest:
+            if not joined_category:
+                stmt = stmt.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            stmt = stmt.where(Category.show_for_guest == True)
+
+        if tags:
+            for tag in tags:
+                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
+
+        # Determine search columns (map 'code' to 'designation' for pages)
+        fields_map = {"name": Page.name, "code": Page.designation}
+        target_columns = []
+        if search_fields:
+            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
+        
+        if not target_columns:
+            target_columns = [Page.name, Page.designation]
+
+        if exact_match:
+            # Exact match (whole string, case-insensitive)
+            conditions = [col.ilike(query) for col in target_columns]
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+        else:
+            # Word-based partial match
+            words = query.split()
+            for word in words:
+                pattern = f"%{word}%"
+                conditions = [col.ilike(pattern) for col in target_columns]
+                if conditions:
+                    stmt = stmt.where(or_(*conditions))
 
         stmt = stmt.distinct()
         result = await self.session.execute(stmt)
@@ -87,7 +175,8 @@ class AppRepository:
     async def get_groups(
             self, 
             limit: int | None = None, 
-            offset: int | None = None
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Group]:
         """
         Retrieves a list of groups with pagination.
@@ -95,13 +184,22 @@ class AppRepository:
         Args:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter groups visible for guests.
 
         Returns:
             list[Group]: A list of Group objects.
         """
         query = select(Group).options(
             selectinload(Group.categories).selectinload(Category.documents)
-        ).order_by(Group.id)
+        )
+
+        if show_for_guest:
+            query = query.where(Group.show_for_guest == True)
+            query = query.options(
+                with_loader_criteria(Category, Category.show_for_guest == True)
+            )
+
+        query = query.order_by(Group.id)
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -160,17 +258,26 @@ class AppRepository:
         return group
 
 
-    async def create_group(self, name: str) -> Group:
+    async def create_group(
+            self, name: str, 
+            show_for_guest: bool = False, 
+            has_all_docs_search: bool = False
+    ) -> Group:
         """
         Creates a new group.
 
         Args:
             name (str): The name of the new group.
+            has_all_docs_search (bool): Flag to enable "All Documents" search.
 
         Returns:
             Group: The created group object.
         """
-        group = Group(name=name)
+        group = Group(
+            name=name, 
+            show_for_guest=show_for_guest, 
+            has_all_docs_search=has_all_docs_search
+        )
         self.session.add(group)
         await self.session.flush()
         
@@ -213,7 +320,8 @@ class AppRepository:
     async def get_categories(
             self, 
             limit: int | None = None, 
-            offset: int | None = None
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Category]:
         """
         Retrieves a list of categories with pagination.
@@ -221,6 +329,7 @@ class AppRepository:
         Args:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter categories visible for guests.
 
         Returns:
             list[Category]: A list of Category objects.
@@ -228,6 +337,13 @@ class AppRepository:
         query = select(Category).options(
             selectinload(Category.documents)
         ).order_by(Category.id)
+
+        if show_for_guest:
+            query = query.where(Category.show_for_guest == True)
+            query = query.options(
+                with_loader_criteria(Category, Category.show_for_guest == True)
+            )
+
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -281,8 +397,9 @@ class AppRepository:
     async def get_group_categories(
             self, 
             group_id: int, 
-            limit: int | None = None, 
-            offset: int | None = None
+            limit: int | None = None,
+            offset: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Category]:
         """
         Retrieves categories for a specific group.
@@ -291,6 +408,7 @@ class AppRepository:
             group_id (int): The group ID.
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
+            show_for_guest (bool): If True, filter categories visible for guests.
 
         Returns:
             list[Category]: A list of Category objects.
@@ -298,6 +416,10 @@ class AppRepository:
         query = select(Category).options(
             selectinload(Category.documents)
         ).where(Category.group_id == group_id).order_by(Category.id)
+
+        if show_for_guest:
+            query = query.where(Category.show_for_guest == True)
+
         if limit is not None:
             query = query.limit(limit)
         if offset is not None:
@@ -317,24 +439,36 @@ class AppRepository:
             list[Document]: A list of Document objects.
         """
         query = select(Document).options(
+            selectinload(Document.tags)
+        ).options(
             selectinload(Document.pages)
         ).where(Document.category_id == category_id)
         documents = await self.session.execute(query)
         return documents.scalars().all()
     
 
-    async def create_category(self, name: str, group_id: int) -> Category:
+    async def create_category(
+            self, 
+            name: str, 
+            group_id: int,
+            show_for_guest: bool = False,
+    ) -> Category:
         """
         Creates a new category.
 
         Args:
             name (str): The category name.
             group_id (int): The ID of the group the category belongs to.
+            show_for_guest (bool): Visibility for guests.
+            has_all_docs_search (bool): Search flag.
 
         Returns:
             Category: The created category object.
         """
-        category = Category(name=name, group_id=group_id)
+        category = Category(
+            name=name, group_id=group_id,
+            show_for_guest=show_for_guest
+        )
         self.session.add(category)
         await self.session.flush()
         
@@ -411,7 +545,9 @@ class AppRepository:
         Returns:
             Document | None: The Document object or None if not found.
         """
-        query = select(Document).where(Document.id == id)
+        query = select(Document).options(
+            selectinload(Document.tags)
+        ).where(Document.id == id)
         document = await self.session.execute(query)
         return document.scalar_one_or_none()
 
@@ -420,7 +556,9 @@ class AppRepository:
             self, 
             limit: int | None = None, 
             offset: int | None = None,
-            category_id: int | None = None
+            category_id: int | None = None,
+            group_id: int | None = None,
+            show_for_guest: bool = False
     ) -> list[Document]:
         """
         Retrieves a list of documents with pagination.
@@ -429,12 +567,29 @@ class AppRepository:
             limit (int | None): Limit the number of results.
             offset (int | None): Offset for pagination.
             category_id (int | None): Filter by category ID.
+            group_id (int | None): Filter by group ID.
 
         Returns:
             list[Document]: A list of Document objects.
         """
-        query = select(Document).order_by(Document.id)
+        query = select(Document).options(
+            selectinload(Document.tags)
+        ).order_by(Document.id)
         
+        joined_category = False
+
+        if group_id is not None:
+            query = query.join(
+                Category, Document.category_id == Category.id
+            ).where(Category.group_id == group_id)
+            joined_category = True
+            
+        if show_for_guest:
+            if not joined_category:
+                query = query.join(Category, Document.category_id == Category.id)
+                joined_category = True
+            query = query.where(Category.show_for_guest == True)
+
         if category_id is not None:
             query = query.where(Document.category_id == category_id)
             
@@ -472,7 +627,13 @@ class AppRepository:
         return document.scalar_one_or_none()
     
 
-    async def create_document(self, name: str, code: str, category_id: int) -> Document:
+    async def create_document(
+        self, 
+        name: str, 
+        code: str, 
+        category_id: int, 
+        tags: list[Tag] = []
+    ) -> Document:
         """
         Creates a new document.
 
@@ -480,6 +641,7 @@ class AppRepository:
             name (str): The document name.
             code (str): The document code.
             category_id (int): The category ID.
+            tags (list[Tag]): List of tag objects.
 
         Returns:
             Document: The created document object.
@@ -487,12 +649,14 @@ class AppRepository:
         document = Document(
             name=name,
             code=code,
-            category_id=category_id
+            category_id=category_id,
+            tags=tags
         )
         self.session.add(document)
         await self.session.flush()
         
         query = select(Document).options(
+            selectinload(Document.tags),
             selectinload(Document.pages)
         ).where(Document.id == document.id)
         result = await self.session.execute(query)
@@ -511,8 +675,13 @@ class AppRepository:
         """
         self.session.add(document)
         await self.session.flush()
-        await self.session.refresh(document)
-        return document
+        
+        query = select(Document).options(
+            selectinload(Document.tags),
+            selectinload(Document.pages)
+        ).where(Document.id == document.id)
+        result = await self.session.execute(query)
+        return result.scalar_one()
     
 
     async def delete_document(self, document: Document) -> None:
@@ -644,3 +813,34 @@ class AppRepository:
         if not document_ids: return
         stmt = delete(Page).where(Page.document_id.in_(document_ids))
         await self.session.execute(stmt)
+
+
+    # ====================
+    # Tags
+    # ====================
+
+    async def get_or_create_tags(self, tag_names: list[str]) -> list[Tag]:
+        """
+        Finds existing tags or creates new ones based on a list of names.
+        """
+        if not tag_names:
+            return []
+        
+        unique_names = list(set(tag_names))
+        
+        # Find existing
+        query = select(Tag).where(Tag.name.in_(unique_names))
+        result = await self.session.execute(query)
+        existing_tags = result.scalars().all()
+        existing_names = {tag.name for tag in existing_tags}
+        
+        tags = list(existing_tags)
+        
+        # Create missing
+        for name in unique_names:
+            if name not in existing_names:
+                new_tag = Tag(name=name)
+                self.session.add(new_tag)
+                tags.append(new_tag)
+        
+        return tags

@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import jwt, JWTError
 
 from schemas import *
 from db.deps import get_db
 from services import AppService
 from utils import get_current_user
+from core.config import settings
+from repositories import AuthRepository
 
 
 router = APIRouter(prefix="/app", tags=["App"])
@@ -14,21 +18,62 @@ def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
     return AppService(db)
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+async def get_optional_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> UserResponse | None:
+    """
+    Returns the current user if the token is valid, otherwise returns None.
+    Does not raise 401 error.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    
+    repo = AuthRepository(db)
+    user = await repo.get_user_by_id(int(user_id))
+    if not user:
+        return None
+    return UserResponse.model_validate(user)
+
+
 # ====================
 # Search
 # ====================
 
-@router.get("/category_search", response_model=SearchResponse)
-async def category_search(
-    category_id: int,
+@router.get("/search", response_model=SearchResponse)
+async def search(
     query: str,
+    tags: list[str] | None = Query(None),
+    group_id: int | None = Query(None),
+    category_id: int | None = Query(None),
+    exact_match: bool = False,
+    include_pages: bool = True,
+    search_fields: list[str] = Query(default=["code", "name"]),
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
-    Searches for documents and pages within a specific category.
+    Searches for documents and pages within a specific category or group.
     """
-    return await service.search_in_category(
-        category_id=category_id, query=query
+    is_guest = user is None
+    return await service.search(
+        query=query, 
+        tags=tags,
+        group_id=group_id, 
+        category_id=category_id, 
+        exact_match=exact_match, 
+        include_pages=include_pages, 
+        search_fields=search_fields,
+        is_guest=is_guest
     )
 
 
@@ -40,12 +85,14 @@ async def category_search(
 async def get_groups(
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves a list of groups (departments).
     """
-    return await service.get_groups(limit=limit, offset=offset)
+    is_guest = user is None
+    return await service.get_groups(limit=limit, offset=offset, is_guest=is_guest)
 
 
 @router.post("/groups", response_model=DepartmentResponse)
@@ -93,12 +140,14 @@ async def delete_group(
 async def get_categories(
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves a list of all categories.
     """
-    return await service.get_categories(limit=limit, offset=offset)
+    is_guest = user is None
+    return await service.get_categories(limit=limit, offset=offset, is_guest=is_guest)
 
 
 @router.get("/categories/{id}", response_model=CategoryResponse)
@@ -117,15 +166,18 @@ async def get_group_categories(
     group_id: int,
     offset: int = 0,
     limit: int | None = None,
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
     Retrieves categories belonging to a specific group.
     """
+    is_guest = user is None
     return await service.get_group_categories(
         group_id=group_id, 
         limit=limit, 
-        offset=offset
+        offset=offset,
+        is_guest=is_guest
     )
 
 
@@ -175,15 +227,20 @@ async def get_documents(
     offset: int = 0,
     limit: int | None = None,
     category_id: int | None = None,
+    group_id: int | None = Query(None),
+    user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
     """
-    Retrieves a list of all documents.
+    Retrieves a list of documents. Can be filtered by category or group.
     """
+    is_guest = user is None
     return await service.get_documents(
         limit=limit, 
         offset=offset,
-        category_id=category_id
+        category_id=category_id,
+        group_id=group_id,
+        is_guest=is_guest
     )
 
 

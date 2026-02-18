@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SearchResponse(BaseModel):
@@ -7,13 +7,32 @@ class SearchResponse(BaseModel):
     result: list[dict]
 
 
+"""=== Tags ==="""
+class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+
+
 """=== Departments ==="""
 class DepartmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
+    show_for_guest: bool
+    has_all_docs_search: bool
     documents_count: int
+
+    @field_validator("show_for_guest", mode="before")
+    @classmethod
+    def set_show_for_guest(cls, v):
+        return v or False
+
+    @field_validator("has_all_docs_search", mode="before")
+    @classmethod
+    def set_has_all_docs_search(cls, v):
+        return v or False
 
 
 class DepartmentsResponse(BaseModel):
@@ -22,10 +41,14 @@ class DepartmentsResponse(BaseModel):
 
 class DepartmentCreateSchema(BaseModel):
     name: str
+    show_for_guest: bool = False
+    has_all_docs_search: bool = False
 
 
 class DepartmentUpdate(BaseModel):
     name: str
+    show_for_guest: bool
+    has_all_docs_search: bool
 
 
 """=== Categories ==="""
@@ -35,7 +58,13 @@ class CategoryResponse(BaseModel):
     id: int
     group_id: int
     name: str
+    show_for_guest: bool
     documents_count: int
+
+    @field_validator("show_for_guest", mode="before")
+    @classmethod
+    def set_show_for_guest(cls, v):
+        return v or False
 
 
 class CategoriesResponse(BaseModel):
@@ -45,9 +74,12 @@ class CategoriesResponse(BaseModel):
 class CategoryCreateSchema(BaseModel):
     group_id: int
     name: str
+    show_for_guest: bool = False
+
 
 class CategoryUpdateSchema(BaseModel):
     name: str
+    show_for_guest: bool
 
 
 """=== Pages ==="""
@@ -82,6 +114,7 @@ class DocumentResponse(BaseModel):
     category_id: int
     code: str
     name: str
+    tags: list[TagResponse] = []
 
 
 class DocumentsResponse(BaseModel):
@@ -93,6 +126,7 @@ class DocumentCreateSchema(BaseModel):
     code: str
     name: str
     pages: list[PageUpdate] | None = None
+    tags: list[str] = []
 
 
 class DocumentUpdateSchema(BaseModel):
@@ -101,3 +135,4 @@ class DocumentUpdateSchema(BaseModel):
     code: str | None = None
     name: str | None = None
     pages: list[PageUpdate] | None = None
+    tags: list[str] | None = None

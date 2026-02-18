@@ -69,7 +69,7 @@ class AuthService:
         )
         
         # Check if password is correct
-        is_password_correct = verify_password(data.password, user.password_hash)
+        is_password_correct = await asyncio.to_thread(verify_password, data.password, user.password_hash)
         await self._check_http_error(
             condition=not is_password_correct,
             status_code=400,
@@ -127,7 +127,7 @@ class AuthService:
         )
         
         # Check if code is correct
-        is_code_correct = verify_password(data.code, code.code_hash)
+        is_code_correct = await asyncio.to_thread(verify_password, data.code, code.code_hash)
         await self._check_http_error(
             condition=not is_code_correct,
             status_code=400,
@@ -135,7 +135,7 @@ class AuthService:
         )
         
         # Create user
-        password_hash = hash_password(data.password)
+        password_hash = await asyncio.to_thread(hash_password, data.password)
         user = User(
             email=data.email,
             password_hash=password_hash,
@@ -316,7 +316,7 @@ class AuthService:
         )
 
         # Check if code is correct
-        is_code_correct = verify_password(data.code, code.code_hash)
+        is_code_correct = await asyncio.to_thread(verify_password, data.code, code.code_hash)
         await self._check_http_error(
             condition=not is_code_correct,
             status_code=400,
@@ -377,7 +377,7 @@ class AuthService:
         )
         
         # Create password hash
-        password_hash = hash_password(data.password)
+        password_hash = await asyncio.to_thread(hash_password, data.password)
 
         # Update user
         user.password_hash = password_hash
