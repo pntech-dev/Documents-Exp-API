@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
+from fastapi_limiter import FastAPILimiter
+from redis.asyncio import Redis
 
 from schemas import *
 from db.deps import get_db
@@ -14,8 +16,12 @@ from repositories import AuthRepository
 router = APIRouter(prefix="/app", tags=["App"])
 
 
-def get_app_service(db: AsyncSession = Depends(get_db)) -> AppService:
-    return AppService(db)
+async def get_redis() -> Redis:
+    return FastAPILimiter.redis
+
+
+def get_app_service(db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)) -> AppService:
+    return AppService(db, redis)
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)

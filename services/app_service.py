@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from repositories import AppRepository
 from schemas import (
@@ -23,8 +24,9 @@ class AppService:
     Handles operations related to groups (departments), categories,
     documents, and pages, including search functionality.
     """
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, redis: Redis = None) -> None:
         self.repo = AppRepository(db)
+        self.redis = redis
 
 
     async def search(
@@ -104,12 +106,29 @@ class AppService:
         Returns:
             DepartmentsResponse: A response object containing the list of groups.
         """
+        # 1. Create a unique cache key
+        cache_key = f"groups:{limit}:{offset}:{is_guest}"
+
+        # 2. Try to get it from Redis
+        if self.redis:
+            cached_data = await self.redis.get(cache_key)
+            if cached_data:
+                # If find - return it (Cache Hit)
+                return DepartmentsResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         groups = await self.repo.get_groups(limit=limit, offset=offset, show_for_guest=is_guest)
-        return DepartmentsResponse(
+        response = DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        if self.redis:
+            await self.redis.set(cache_key, response.model_dump_json(), ex=3600)
+            
+        return response
     
-    
+
     async def create_group(self, data: DepartmentCreateSchema) -> DepartmentResponse:
         """
         Creates a new group (department).
@@ -133,6 +152,7 @@ class AppService:
             has_all_docs_search=data.has_all_docs_search
         )
         await self.repo.session.commit()
+        await self._clear_groups_cache()
         return DepartmentResponse.model_validate(group)
     
 
@@ -159,6 +179,7 @@ class AppService:
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
+        await self._clear_groups_cache()
 
         return DepartmentResponse.model_validate(group)
     
@@ -191,8 +212,18 @@ class AppService:
 
         await self.repo.delete_group(group=group)
         await self.repo.session.commit()
+        await self._clear_groups_cache()
 
         return {"detail": "Group deleted"}
+    
+
+    async def _clear_groups_cache(self):
+        """Helper to clear all group related cache keys"""
+        if self.redis:
+            # Find all keys starting with "groups:" using scan_iter (non-blocking)
+            keys = [key async for key in self.redis.scan_iter("groups:*")]
+            if keys:
+                await self.redis.delete(*keys)
 
 
     # ====================
