@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
@@ -16,6 +17,7 @@ from schemas import (
 from models import Page
 
 
+logger = logging.getLogger(__name__)
 
 class AppService:
     """
@@ -803,24 +805,38 @@ class AppService:
 
     async def _get_cache(self, cache_key: str) -> any | None:
             """Helper to get cached data"""
-            if self.redis:
+            if not self.redis:
+                return None
+            
+            try:
                 cached_data = await self.redis.get(cache_key)
-                if cached_data:
-                    return cached_data
-
+                return cached_data
+            except Exception as e:
+                logger.error(f"Redis error on get key {cache_key}: {e}")
             return None
     
 
     async def _save_cache(self, cache_key: str, data_to_save: any, expire: int = 3600) -> None:
             """Helper to save cached data"""
-            if self.redis:
+            if not self.redis:
+                return
+            
+            try:
                 await self.redis.set(cache_key, data_to_save.model_dump_json(), ex=expire)
+            except Exception as e:
+                logger.error(f"Redis error on set key {cache_key}: {e}")
 
 
     async def _clear_cache(self, cache_key: str):
         """Helper to clear all related cache keys"""
-        if self.redis:
+        if not self.redis:
+            return
+        
+        try:
             # Find all keys starting with cache_key using scan_iter (non-blocking)
-            keys = [key async for key in self.redis.scan_iter(cache_key)]
+            # Using match=cache_key explicitly is safer
+            keys = [key async for key in self.redis.scan_iter(match=cache_key)]
             if keys:
                 await self.redis.delete(*keys)
+        except Exception as e:
+            logger.error(f"Redis error on clear pattern {cache_key}: {e}")
