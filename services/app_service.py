@@ -52,10 +52,15 @@ class AppService:
             SearchResponse: A response object containing the search results.
         """
         # Clean tags: remove whitespace and empty strings just in case
-        clean_tags = [tag.strip() for tag in tags if tag.strip()] if tags else None
+        clean_tags = [
+            tag.strip() for tag in tags if tag.strip()
+        ] if tags else None
 
         if not category_id and not group_id:
-            raise HTTPException(status_code=400, detail="Either category_id or group_id must be provided")
+            raise HTTPException(
+                status_code=400, 
+                detail="Either category_id or group_id must be provided"
+            )
 
         documents = await self.repo.search_documents(
             query=query, 
@@ -82,10 +87,14 @@ class AppService:
         search_results = []
 
         for document in documents:
-            search_results.append(DocumentResponse.model_validate(document).model_dump())
+            search_results.append(
+                DocumentResponse.model_validate(document).model_dump()
+            )
         
         for page in pages:
-            search_results.append(PageResponse.model_validate(page).model_dump())
+            search_results.append(
+                PageResponse.model_validate(page).model_dump()
+            )
 
         return SearchResponse(result=search_results)
 
@@ -94,7 +103,12 @@ class AppService:
     # Departments
     # ====================
 
-    async def get_groups(self, limit: int | None, offset: int, is_guest: bool = False) -> DepartmentsResponse:
+    async def get_groups(
+            self, 
+            limit: int | None, 
+            offset: int, 
+            is_guest: bool = False
+    ) -> DepartmentsResponse:
         """
         Retrieves a list of groups (departments).
 
@@ -109,27 +123,31 @@ class AppService:
         # 1. Create a unique cache key
         cache_key = f"groups:{limit}:{offset}:{is_guest}"
 
-        # 2. Try to get it from Redis
-        if self.redis:
-            cached_data = await self.redis.get(cache_key)
-            if cached_data:
-                # If find - return it (Cache Hit)
-                return DepartmentsResponse.model_validate_json(cached_data)
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DepartmentsResponse.model_validate_json(cached_data)
 
         # 3. If havent found it - get it from DB (Cache Miss)
-        groups = await self.repo.get_groups(limit=limit, offset=offset, show_for_guest=is_guest)
+        groups = await self.repo.get_groups(
+            limit=limit, 
+            offset=offset, 
+            show_for_guest=is_guest
+        )
         response = DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
 
         # 4. Save the result in Redis for one hour (3600 sec.)
-        if self.redis:
-            await self.redis.set(cache_key, response.model_dump_json(), ex=3600)
+        await self._save_cache(cache_key, response)
             
         return response
     
 
-    async def create_group(self, data: DepartmentCreateSchema) -> DepartmentResponse:
+    async def create_group(
+            self, 
+            data: DepartmentCreateSchema
+    ) -> DepartmentResponse:
         """
         Creates a new group (department).
 
@@ -152,11 +170,15 @@ class AppService:
             has_all_docs_search=data.has_all_docs_search
         )
         await self.repo.session.commit()
-        await self._clear_groups_cache()
+        await self._clear_cache(cache_key="groups:*")
         return DepartmentResponse.model_validate(group)
     
 
-    async def update_group(self, id: int, data: DepartmentUpdate) -> DepartmentResponse:
+    async def update_group(
+            self, 
+            id: int, 
+            data: DepartmentUpdate
+    ) -> DepartmentResponse:
         """
         Updates an existing group.
 
@@ -179,7 +201,7 @@ class AppService:
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
-        await self._clear_groups_cache()
+        await self._clear_cache(cache_key="groups:*")
 
         return DepartmentResponse.model_validate(group)
     
@@ -204,26 +226,23 @@ class AppService:
         # Bulk delete optimization
         category_ids = await self.repo.get_category_ids_by_group(group_id=id)
         if category_ids:
-            document_ids = await self.repo.get_document_ids_by_categories(category_ids=category_ids)
+            document_ids = await self.repo.get_document_ids_by_categories(
+                category_ids=category_ids
+            )
             if document_ids:
-                await self.repo.delete_pages_by_document_ids(document_ids=document_ids)
-                await self.repo.delete_documents_by_ids(document_ids=document_ids)
+                await self.repo.delete_pages_by_document_ids(
+                    document_ids=document_ids
+                )
+                await self.repo.delete_documents_by_ids(
+                    document_ids=document_ids
+                )
             await self.repo.delete_categories_by_ids(category_ids=category_ids)
 
         await self.repo.delete_group(group=group)
         await self.repo.session.commit()
-        await self._clear_groups_cache()
+        await self._clear_cache(cache_key="groups:*")
 
         return {"detail": "Group deleted"}
-    
-
-    async def _clear_groups_cache(self):
-        """Helper to clear all group related cache keys"""
-        if self.redis:
-            # Find all keys starting with "groups:" using scan_iter (non-blocking)
-            keys = [key async for key in self.redis.scan_iter("groups:*")]
-            if keys:
-                await self.redis.delete(*keys)
 
 
     # ====================
@@ -247,14 +266,30 @@ class AppService:
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{limit}:{offset}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoriesResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         categories = await self.repo.get_categories(
             limit=limit, 
             offset=offset, 
             show_for_guest=is_guest
         )
-        return CategoriesResponse(
+
+        response =  CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
+
 
     async def get_category(self, id: int) -> CategoryResponse:
         """
@@ -269,11 +304,25 @@ class AppService:
         Raises:
             HTTPException: If the category is not found.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{id}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoryResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         category = await self.repo.get_category(id=id)
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
 
-        return CategoryResponse.model_validate(category)
+        response = CategoryResponse.model_validate(category)
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
 
 
     async def get_group_categories(
@@ -295,15 +344,29 @@ class AppService:
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{group_id}:{limit}:{offset}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoriesResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         categories = await self.repo.get_group_categories(
             group_id=group_id, 
             limit=limit, 
             offset=offset, 
             show_for_guest=is_guest
         )
-        return CategoriesResponse(
+        response = CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
     
 
     async def create_category(self, data: CategoryCreateSchema) -> CategoryResponse:
@@ -329,6 +392,7 @@ class AppService:
             show_for_guest=data.show_for_guest,
         )
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
     
@@ -358,6 +422,7 @@ class AppService:
         category.show_for_guest = data.show_for_guest
         await self.repo.save_category(category=category)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
     
@@ -388,6 +453,7 @@ class AppService:
         # Delete category
         await self.repo.delete_category(category=category)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
 
         return {"detail": "Category deleted"}
 
@@ -638,3 +704,33 @@ class AppService:
         return PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
+    
+
+    # ====================
+    # Service methods
+    # ====================
+
+
+    async def _get_cache(self, cache_key: str) -> any | None:
+            """Helper to get cached data"""
+            if self.redis:
+                cached_data = await self.redis.get(cache_key)
+                if cached_data:
+                    return cached_data
+
+            return None
+    
+
+    async def _save_cache(self, cache_key: str, data_to_save: any, expire: int = 3600) -> None:
+            """Helper to save cached data"""
+            if self.redis:
+                await self.redis.set(cache_key, data_to_save.model_dump_json(), ex=expire)
+
+
+    async def _clear_cache(self, cache_key: str):
+        """Helper to clear all related cache keys"""
+        if self.redis:
+            # Find all keys starting with cache_key using scan_iter (non-blocking)
+            keys = [key async for key in self.redis.scan_iter(cache_key)]
+            if keys:
+                await self.redis.delete(*keys)
