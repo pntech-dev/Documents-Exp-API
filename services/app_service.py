@@ -56,6 +56,16 @@ class AppService:
             tag.strip() for tag in tags if tag.strip()
         ] if tags else None
 
+        # 1. Generate Cache Key
+        tags_str = ",".join(sorted(clean_tags)) if clean_tags else "None"
+        fields_str = ",".join(sorted(search_fields)) if search_fields else "None"
+        cache_key = f"search:{query}:{tags_str}:{group_id}:{category_id}:{exact_match}:{include_pages}:{fields_str}:{is_guest}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return SearchResponse.model_validate_json(cached_data)
+
         if not category_id and not group_id:
             raise HTTPException(
                 status_code=400, 
@@ -96,7 +106,12 @@ class AppService:
                 PageResponse.model_validate(page).model_dump()
             )
 
-        return SearchResponse(result=search_results)
+        response = SearchResponse(result=search_results)
+
+        # 3. Save Cache (Short TTL: 5 minutes = 300 seconds)
+        await self._save_cache(cache_key, response, expire=300)
+
+        return response
 
 
     # ====================
@@ -241,6 +256,8 @@ class AppService:
         await self.repo.delete_group(group=group)
         await self.repo.session.commit()
         await self._clear_cache(cache_key="groups:*")
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
 
         return {"detail": "Group deleted"}
 
@@ -454,6 +471,8 @@ class AppService:
         await self.repo.delete_category(category=category)
         await self.repo.session.commit()
         await self._clear_cache(cache_key="categories:*")
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
 
         return {"detail": "Category deleted"}
 
@@ -557,6 +576,9 @@ class AppService:
                 await self.repo.save_page(page)
         
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+
         return DocumentResponse.model_validate(document)
 
     
@@ -619,6 +641,9 @@ class AppService:
                     await self.repo.delete_page(page)
 
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+
         return DocumentResponse.model_validate(document)
     
 
@@ -644,6 +669,8 @@ class AppService:
         # Delete document
         await self.repo.delete_document(document=document)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
 
         return {"detail": "Document deleted"}
     
