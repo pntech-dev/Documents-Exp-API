@@ -501,6 +501,15 @@ class AppService:
         Returns:
             DocumentsResponse: A response object containing the list of documents.
         """
+        # 1. Create a unique cache key
+        cache_key = f"documents:{limit}:{offset}:{category_id}:{group_id}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DocumentsResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         documents = await self.repo.get_documents(
             limit=limit, 
             offset=offset, 
@@ -508,9 +517,14 @@ class AppService:
             group_id=group_id,
             show_for_guest=is_guest
         )
-        return DocumentsResponse(
+        response = DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
     
     async def get_document(self, id: int) -> DocumentResponse:
         """
@@ -525,11 +539,25 @@ class AppService:
         Raises:
             HTTPException: If the document is not found.
         """
+        # 1. Create a unique cache key
+        cache_key = f"documents:{id}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DocumentResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         document = await self.repo.get_document(id=id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        return DocumentResponse.model_validate(document)
+        response = DocumentResponse.model_validate(document)
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
 
     async def create_document(self, data: DocumentCreateSchema) -> DocumentResponse:
         """
