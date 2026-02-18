@@ -24,6 +24,17 @@ The system ensures data integrity using PostgreSQL and high performance using Re
 
 ---
 
+## 💡 What's New (v1.1.0) - Tags & Filters
+
+- **Tag Search**: The API now supports searching documents by tags.
+- **Advanced Search Filters**:
+    - `exact_match`: Toggle between exact phrase matching and word-based partial matching.
+    - `include_pages`: Option to include or exclude document pages from search results.
+    - `search_fields`: Specify which fields to search in (e.g., `name`, `code`).
+- **Optimization**: Performance improvements for search queries and database interactions.
+
+---
+
 ## 🎯 Key Features
 
 ### ✅ Hierarchical Data Structure
