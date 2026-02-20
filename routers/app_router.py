@@ -2,11 +2,10 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
-from fastapi_limiter import FastAPILimiter
 from redis.asyncio import Redis
 
 from schemas import *
-from db.deps import get_db
+from db.deps import get_db, get_redis_client
 from services import AppService
 from utils import get_current_user
 from core.config import settings
@@ -16,11 +15,10 @@ from repositories import AuthRepository
 router = APIRouter(prefix="/app", tags=["App"])
 
 
-async def get_redis() -> Redis:
-    return FastAPILimiter.redis
-
-
-def get_app_service(db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)) -> AppService:
+def get_app_service(
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis_client)
+) -> AppService:
     return AppService(db, redis)
 
 
