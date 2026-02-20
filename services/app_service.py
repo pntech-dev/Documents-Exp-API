@@ -1,5 +1,7 @@
 from fastapi import HTTPException
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from repositories import AppRepository
 from schemas import (
@@ -15,6 +17,7 @@ from schemas import (
 from models import Page
 
 
+logger = logging.getLogger(__name__)
 
 class AppService:
     """
@@ -23,8 +26,9 @@ class AppService:
     Handles operations related to groups (departments), categories,
     documents, and pages, including search functionality.
     """
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, redis: Redis = None) -> None:
         self.repo = AppRepository(db)
+        self.redis = redis
 
 
     async def search(
@@ -50,10 +54,25 @@ class AppService:
             SearchResponse: A response object containing the search results.
         """
         # Clean tags: remove whitespace and empty strings just in case
-        clean_tags = [tag.strip() for tag in tags if tag.strip()] if tags else None
+        clean_tags = [
+            tag.strip() for tag in tags if tag.strip()
+        ] if tags else None
+
+        # 1. Generate Cache Key
+        tags_str = ",".join(sorted(clean_tags)) if clean_tags else "None"
+        fields_str = ",".join(sorted(search_fields)) if search_fields else "None"
+        cache_key = f"search:{query}:{tags_str}:{group_id}:{category_id}:{exact_match}:{include_pages}:{fields_str}:{is_guest}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return SearchResponse.model_validate_json(cached_data)
 
         if not category_id and not group_id:
-            raise HTTPException(status_code=400, detail="Either category_id or group_id must be provided")
+            raise HTTPException(
+                status_code=400, 
+                detail="Either category_id or group_id must be provided"
+            )
 
         documents = await self.repo.search_documents(
             query=query, 
@@ -80,19 +99,33 @@ class AppService:
         search_results = []
 
         for document in documents:
-            search_results.append(DocumentResponse.model_validate(document).model_dump())
+            search_results.append(
+                DocumentResponse.model_validate(document).model_dump()
+            )
         
         for page in pages:
-            search_results.append(PageResponse.model_validate(page).model_dump())
+            search_results.append(
+                PageResponse.model_validate(page).model_dump()
+            )
 
-        return SearchResponse(result=search_results)
+        response = SearchResponse(result=search_results)
+
+        # 3. Save Cache (Short TTL: 5 minutes = 300 seconds)
+        await self._save_cache(cache_key, response, expire=300)
+
+        return response
 
 
     # ====================
     # Departments
     # ====================
 
-    async def get_groups(self, limit: int | None, offset: int, is_guest: bool = False) -> DepartmentsResponse:
+    async def get_groups(
+            self, 
+            limit: int | None, 
+            offset: int, 
+            is_guest: bool = False
+    ) -> DepartmentsResponse:
         """
         Retrieves a list of groups (departments).
 
@@ -104,13 +137,34 @@ class AppService:
         Returns:
             DepartmentsResponse: A response object containing the list of groups.
         """
-        groups = await self.repo.get_groups(limit=limit, offset=offset, show_for_guest=is_guest)
-        return DepartmentsResponse(
+        # 1. Create a unique cache key
+        cache_key = f"groups:{limit}:{offset}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DepartmentsResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
+        groups = await self.repo.get_groups(
+            limit=limit, 
+            offset=offset, 
+            show_for_guest=is_guest
+        )
+        response = DepartmentsResponse(
             departments=[DepartmentResponse.model_validate(g) for g in groups]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+            
+        return response
     
-    
-    async def create_group(self, data: DepartmentCreateSchema) -> DepartmentResponse:
+
+    async def create_group(
+            self, 
+            data: DepartmentCreateSchema
+    ) -> DepartmentResponse:
         """
         Creates a new group (department).
 
@@ -133,10 +187,15 @@ class AppService:
             has_all_docs_search=data.has_all_docs_search
         )
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="groups:*")
         return DepartmentResponse.model_validate(group)
     
 
-    async def update_group(self, id: int, data: DepartmentUpdate) -> DepartmentResponse:
+    async def update_group(
+            self, 
+            id: int, 
+            data: DepartmentUpdate
+    ) -> DepartmentResponse:
         """
         Updates an existing group.
 
@@ -159,6 +218,7 @@ class AppService:
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="groups:*")
 
         return DepartmentResponse.model_validate(group)
     
@@ -183,14 +243,24 @@ class AppService:
         # Bulk delete optimization
         category_ids = await self.repo.get_category_ids_by_group(group_id=id)
         if category_ids:
-            document_ids = await self.repo.get_document_ids_by_categories(category_ids=category_ids)
+            document_ids = await self.repo.get_document_ids_by_categories(
+                category_ids=category_ids
+            )
             if document_ids:
-                await self.repo.delete_pages_by_document_ids(document_ids=document_ids)
-                await self.repo.delete_documents_by_ids(document_ids=document_ids)
+                await self.repo.delete_pages_by_document_ids(
+                    document_ids=document_ids
+                )
+                await self.repo.delete_documents_by_ids(
+                    document_ids=document_ids
+                )
             await self.repo.delete_categories_by_ids(category_ids=category_ids)
 
         await self.repo.delete_group(group=group)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="groups:*")
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Group deleted"}
 
@@ -216,14 +286,30 @@ class AppService:
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{limit}:{offset}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoriesResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         categories = await self.repo.get_categories(
             limit=limit, 
             offset=offset, 
             show_for_guest=is_guest
         )
-        return CategoriesResponse(
+
+        response =  CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
+
 
     async def get_category(self, id: int) -> CategoryResponse:
         """
@@ -238,11 +324,25 @@ class AppService:
         Raises:
             HTTPException: If the category is not found.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{id}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoryResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         category = await self.repo.get_category(id=id)
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
 
-        return CategoryResponse.model_validate(category)
+        response = CategoryResponse.model_validate(category)
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
 
 
     async def get_group_categories(
@@ -264,15 +364,29 @@ class AppService:
         Returns:
             CategoriesResponse: A response object containing the list of categories.
         """
+        # 1. Create a unique cache key
+        cache_key = f"categories:{group_id}:{limit}:{offset}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return CategoriesResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         categories = await self.repo.get_group_categories(
             group_id=group_id, 
             limit=limit, 
             offset=offset, 
             show_for_guest=is_guest
         )
-        return CategoriesResponse(
+        response = CategoriesResponse(
             categories=[CategoryResponse.model_validate(c) for c in categories]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
     
 
     async def create_category(self, data: CategoryCreateSchema) -> CategoryResponse:
@@ -298,6 +412,7 @@ class AppService:
             show_for_guest=data.show_for_guest,
         )
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
     
@@ -327,6 +442,7 @@ class AppService:
         category.show_for_guest = data.show_for_guest
         await self.repo.save_category(category=category)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
     
@@ -357,6 +473,10 @@ class AppService:
         # Delete category
         await self.repo.delete_category(category=category)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="categories:*")
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Category deleted"}
 
@@ -385,6 +505,15 @@ class AppService:
         Returns:
             DocumentsResponse: A response object containing the list of documents.
         """
+        # 1. Create a unique cache key
+        cache_key = f"documents:{limit}:{offset}:{category_id}:{group_id}:{is_guest}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DocumentsResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         documents = await self.repo.get_documents(
             limit=limit, 
             offset=offset, 
@@ -392,9 +521,14 @@ class AppService:
             group_id=group_id,
             show_for_guest=is_guest
         )
-        return DocumentsResponse(
+        response = DocumentsResponse(
             documents=[DocumentResponse.model_validate(d) for d in documents]
         )
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
     
     async def get_document(self, id: int) -> DocumentResponse:
         """
@@ -409,11 +543,25 @@ class AppService:
         Raises:
             HTTPException: If the document is not found.
         """
+        # 1. Create a unique cache key
+        cache_key = f"documents:{id}"
+
+        # 2. Get cached data from Redis (Cache Hit)
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return DocumentResponse.model_validate_json(cached_data)
+
+        # 3. If havent found it - get it from DB (Cache Miss)
         document = await self.repo.get_document(id=id)
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        return DocumentResponse.model_validate(document)
+        response = DocumentResponse.model_validate(document)
+
+        # 4. Save the result in Redis for one hour (3600 sec.)
+        await self._save_cache(cache_key, response)
+
+        return response
 
     async def create_document(self, data: DocumentCreateSchema) -> DocumentResponse:
         """
@@ -460,6 +608,10 @@ class AppService:
                 await self.repo.save_page(page)
         
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
+
         return DocumentResponse.model_validate(document)
 
     
@@ -522,6 +674,10 @@ class AppService:
                     await self.repo.delete_page(page)
 
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
+
         return DocumentResponse.model_validate(document)
     
 
@@ -547,6 +703,9 @@ class AppService:
         # Delete document
         await self.repo.delete_document(document=document)
         await self.repo.session.commit()
+        await self._clear_cache(cache_key="documents:*")
+        await self._clear_cache(cache_key="search:*")
+        await self._clear_cache(cache_key="pages:*")
 
         return {"detail": "Document deleted"}
     
@@ -566,10 +725,20 @@ class AppService:
         Returns:
             PagesResponse: A response object containing the list of pages.
         """
+        # 1. Cache Key
+        cache_key = f"pages:list:{limit}:{offset}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PagesResponse.model_validate_json(cached_data)
+
         pages = await self.repo.get_pages(limit=limit, offset=offset)
-        return PagesResponse(
+        response = PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
+        await self._save_cache(cache_key, response)
+        return response
     
     async def get_page(self, id: int) -> PageResponse:
         """
@@ -584,11 +753,21 @@ class AppService:
         Raises:
             HTTPException: If the page is not found.
         """
+        # 1. Cache Key
+        cache_key = f"pages:{id}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PageResponse.model_validate_json(cached_data)
+
         page = await self.repo.get_page(id=id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
         
-        return PageResponse.model_validate(page)
+        response = PageResponse.model_validate(page)
+        await self._save_cache(cache_key, response)
+        return response
     
 
     async def get_document_pages(self, document_id: int, limit: int | None, offset: int) -> PagesResponse:
@@ -603,7 +782,61 @@ class AppService:
         Returns:
             PagesResponse: A response object containing the list of pages.
         """
+        # 1. Cache Key
+        cache_key = f"pages:doc:{document_id}:{limit}:{offset}"
+
+        # 2. Try Cache
+        cached_data = await self._get_cache(cache_key)
+        if cached_data:
+            return PagesResponse.model_validate_json(cached_data)
+
         pages = await self.repo.get_document_pages(document_id=document_id, limit=limit, offset=offset)
-        return PagesResponse(
+        response = PagesResponse(
             pages=[PageResponse.model_validate(p) for p in pages]
         )
+        await self._save_cache(cache_key, response)
+        return response
+    
+
+    # ====================
+    # Service methods
+    # ====================
+
+
+    async def _get_cache(self, cache_key: str) -> any | None:
+            """Helper to get cached data"""
+            if not self.redis:
+                return None
+            
+            try:
+                cached_data = await self.redis.get(cache_key)
+                return cached_data
+            except Exception as e:
+                logger.error(f"Redis error on get key {cache_key}: {e}")
+            return None
+    
+
+    async def _save_cache(self, cache_key: str, data_to_save: any, expire: int = 3600) -> None:
+            """Helper to save cached data"""
+            if not self.redis:
+                return
+            
+            try:
+                await self.redis.set(cache_key, data_to_save.model_dump_json(), ex=expire)
+            except Exception as e:
+                logger.error(f"Redis error on set key {cache_key}: {e}")
+
+
+    async def _clear_cache(self, cache_key: str):
+        """Helper to clear all related cache keys"""
+        if not self.redis:
+            return
+        
+        try:
+            # Find all keys starting with cache_key using scan_iter (non-blocking)
+            # Using match=cache_key explicitly is safer
+            keys = [key async for key in self.redis.scan_iter(match=cache_key)]
+            if keys:
+                await self.redis.delete(*keys)
+        except Exception as e:
+            logger.error(f"Redis error on clear pattern {cache_key}: {e}")

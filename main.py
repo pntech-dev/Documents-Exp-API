@@ -28,10 +28,10 @@ async def lifespan(app: FastAPI):
     Args:
         app (FastAPI): The FastAPI application instance.
     """
-    redis_connection = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
-    await FastAPILimiter.init(redis_connection)
+    app.state.redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    await FastAPILimiter.init(app.state.redis)
     yield
-    await redis_connection.close()
+    await app.state.redis.close()
 
 
 app = FastAPI(
