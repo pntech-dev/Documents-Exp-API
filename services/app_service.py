@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 import logging
+from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
@@ -803,7 +804,7 @@ class AppService:
     # ====================
 
 
-    async def _get_cache(self, cache_key: str) -> any | None:
+    async def _get_cache(self, cache_key: str) -> Any | None:
             """Helper to get cached data"""
             if not self.redis:
                 return None
@@ -816,7 +817,7 @@ class AppService:
             return None
     
 
-    async def _save_cache(self, cache_key: str, data_to_save: any, expire: int = 3600) -> None:
+    async def _save_cache(self, cache_key: str, data_to_save: Any, expire: int = 3600) -> None:
             """Helper to save cached data"""
             if not self.redis:
                 return
