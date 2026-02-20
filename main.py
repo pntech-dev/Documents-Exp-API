@@ -33,6 +33,11 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.redis.close()
 
+allow_origins = [
+    "http://192.168.0.92",
+    "http://localhost",
+    "https://tsvetotron.com/"
+]
 
 app = FastAPI(
     title="Documents Exp API",
@@ -40,11 +45,12 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
     lifespan=lifespan,
+    root_path="/documents-exp/api"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
