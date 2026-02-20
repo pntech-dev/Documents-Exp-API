@@ -12,7 +12,7 @@ from core.config import settings
 from repositories import AuthRepository
 
 
-router = APIRouter(prefix="/app", tags=["App"])
+router = APIRouter(prefix="", tags=["App"])
 
 
 def get_app_service(
