@@ -56,6 +56,21 @@ def mock_resend(mocker):
     return mock_send
 
 
+@pytest.fixture(autouse=True)
+def mock_s3(mocker):
+    """Mocks S3 FileStorageService."""
+    mock_cls = mocker.patch("services.app_service.FileStorageService")
+    instance = mock_cls.return_value
+    instance.upload_file = AsyncMock(return_value=None)
+    instance.delete_file = AsyncMock(return_value=None)
+    
+    async def mock_iterator(file_path):
+        yield b"fake_content"
+    instance.download_file_iterator = MagicMock(side_effect=mock_iterator)
+    
+    return instance
+
+
 @pytest.fixture()
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
