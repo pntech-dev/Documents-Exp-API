@@ -21,3 +21,4 @@ class Document(Base):
     category = relationship('Category', back_populates='documents')
     pages = relationship('Page', back_populates='document')
     tags = relationship('Tag', secondary=document_tags, back_populates='documents')
+    files = relationship('DocumentFile', back_populates='document', cascade="all, delete-orphan")

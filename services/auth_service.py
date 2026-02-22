@@ -1,6 +1,7 @@
 import asyncio
 import resend
 import logging
+import uuid
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -500,11 +501,11 @@ class AuthService:
             dict[str, str]: A dictionary containing 'access_token' and 'refresh_token'.
         """
         access_token = create_token(
-            data={"sub": str(user.id)},
+            data={"sub": str(user.id), "jti": uuid.uuid4().hex},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         refresh_token = create_token(
-            data={"sub": str(user.id)},
+            data={"sub": str(user.id), "jti": uuid.uuid4().hex},
             expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
         )
 

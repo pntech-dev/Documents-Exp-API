@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
 from redis.asyncio import Redis
+from urllib.parse import quote
 
 from schemas import *
 from db.deps import get_db, get_redis_client
@@ -65,9 +67,7 @@ async def search(
     user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Searches for documents and pages within a specific category or group.
-    """
+    """Searches for documents and pages within a specific category or group."""
     is_guest = user is None
     return await service.search(
         query=query, 
@@ -92,9 +92,7 @@ async def get_groups(
     user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a list of groups (departments).
-    """
+    """Retrieves a list of groups (departments)."""
     is_guest = user is None
     return await service.get_groups(limit=limit, offset=offset, is_guest=is_guest)
 
@@ -105,9 +103,7 @@ async def create_group(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Creates a new group (department).
-    """
+    """Creates a new group (department)."""
     return await service.create_group(data=data)
 
 
@@ -118,9 +114,7 @@ async def update_group(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Updates an existing group.
-    """
+    """Updates an existing group."""
     return await service.update_group(id=id, data=data)
 
 
@@ -130,9 +124,7 @@ async def delete_group(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Deletes a group and all its associated content.
-    """
+    """Deletes a group and all its associated content."""
     return await service.delete_group(id=id)
 
 
@@ -147,9 +139,7 @@ async def get_categories(
     user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a list of all categories.
-    """
+    """Retrieves a list of all categories."""
     is_guest = user is None
     return await service.get_categories(limit=limit, offset=offset, is_guest=is_guest)
 
@@ -159,9 +149,7 @@ async def get_category(
     id: int,
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a specific category by ID.
-    """
+    """Retrieves a specific category by ID."""
     return await service.get_category(id=id)
 
 
@@ -173,9 +161,7 @@ async def get_group_categories(
     user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves categories belonging to a specific group.
-    """
+    """Retrieves categories belonging to a specific group."""
     is_guest = user is None
     return await service.get_group_categories(
         group_id=group_id, 
@@ -191,9 +177,7 @@ async def create_category(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Creates a new category.
-    """
+    """Creates a new category."""
     return await service.create_category(data=data)
 
 
@@ -204,9 +188,7 @@ async def update_category(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Updates an existing category.
-    """
+    """Updates an existing category."""
     return await service.update_category(id=id, data=data)
 
 
@@ -216,9 +198,7 @@ async def delete_category(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Deletes a category.
-    """
+    """Deletes a category."""
     return await service.delete_category(id=id)
 
 
@@ -235,9 +215,7 @@ async def get_documents(
     user: UserResponse | None = Depends(get_optional_current_user),
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a list of documents. Can be filtered by category or group.
-    """
+    """Retrieves a list of documents. Can be filtered by category or group."""
     is_guest = user is None
     return await service.get_documents(
         limit=limit, 
@@ -253,9 +231,7 @@ async def get_document(
     id: int,
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a specific document by ID.
-    """
+    """Retrieves a specific document by ID."""
     return await service.get_document(id=id)
 
 
@@ -265,9 +241,7 @@ async def create_document(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Creates a new document.
-    """
+    """Creates a new document."""
     return await service.create_document(data=data)
 
 
@@ -278,9 +252,7 @@ async def update_document(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Updates an existing document.
-    """
+    """Updates an existing document."""
     return await service.update_document(id=id, data=data)
 
 
@@ -290,9 +262,7 @@ async def delete_document(
     service: AppService = Depends(get_app_service),
     user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Deletes a document.
-    """
+    """Deletes a document."""
     return await service.delete_document(id=id)
 
 
@@ -306,9 +276,7 @@ async def get_pages(
     limit: int | None = None,
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves a list of all pages.
-    """
+    """Retrieves a list of all pages."""
     return await service.get_pages(limit=limit, offset=offset)
 
 
@@ -317,9 +285,7 @@ async def get_page(
     id: int,
     service: AppService = Depends(get_app_service)
     ):
-    """
-    Retrieves a specific page by ID.
-    """
+    """Retrieves a specific page by ID."""
     return await service.get_page(id=id)
 
 
@@ -330,11 +296,54 @@ async def get_document_pages(
     limit: int | None = None,
     service: AppService = Depends(get_app_service)
 ):
-    """
-    Retrieves pages belonging to a specific document.
-    """
+    """Retrieves pages belonging to a specific document."""
     return await service.get_document_pages(
         document_id=document_id, 
         limit=limit, 
         offset=offset
     )
+
+
+# ====================
+# Files
+# ====================
+
+
+@router.get("/files/{id}/download")
+async def download_file(
+    id: int,
+    service: AppService = Depends(get_app_service),
+    user: UserResponse = Depends(get_current_user)
+):
+    """Downloads a file."""
+    stream, filename, content_type = await service.get_file_stream(file_id=id)
+    
+    # RFC 5987 encoding for non-ASCII filenames
+    encoded_filename = quote(filename)
+
+    return StreamingResponse(
+        stream, 
+        media_type=content_type, 
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}"}
+    )
+
+
+@router.post("/documents/{id}/files", response_model=DocumentFileResponse)
+async def upload_file(
+    id: int,
+    file: UploadFile = File(...),
+    service: AppService = Depends(get_app_service),
+    user: UserResponse = Depends(get_current_user)
+):
+    """Uploads a file and attaches it to the document."""
+    return await service.upload_document_file(document_id=id, file=file)
+
+
+@router.delete("/files/{id}")
+async def delete_file(
+    id: int,
+    service: AppService = Depends(get_app_service),
+    user: UserResponse = Depends(get_current_user)
+):
+    """Deletes a file."""
+    return await service.delete_document_file(file_id=id)
