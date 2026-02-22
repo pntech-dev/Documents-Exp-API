@@ -37,7 +37,6 @@ jobs:
                   NUMBER_OF_BYTES_FOR_RESET_TOKEN_GENERATION: 32
                   RESEND_API_KEY: "re_test_key"
                   EMAIL_SENDER: "test@example.com"
-                  ALLOWED_EMAIL_DOMAINS: ""
                   S3_ACCESS_KEY: "test"
                   S3_SECRET_KEY: "test"
                   DATABASE_URL: "sqlite+aiosqlite:///:memory:"
