@@ -224,6 +224,9 @@ class AppService:
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
+
+        # Re-fetch group to ensure relationships are loaded for documents_count
+        group = await self.repo.get_group_by_id(id=id)
         await self._clear_cache(cache_key="groups:*")
 
         return DepartmentResponse.model_validate(group)

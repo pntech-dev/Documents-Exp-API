@@ -84,6 +84,13 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         mock_redis.get.return_value = None
         mock_redis.set.return_value = True
         mock_redis.delete.return_value = True
+
+        # Mock scan_iter to return an empty async iterator to avoid RuntimeWarning
+        async def empty_async_iterator(*args, **kwargs):
+            for _ in []:
+                yield _
+        mock_redis.scan_iter = MagicMock(side_effect=empty_async_iterator)
+
         return mock_redis
 
     async def noop_rate_limiter():
