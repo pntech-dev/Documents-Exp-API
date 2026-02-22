@@ -451,6 +451,9 @@ class AppService:
         category.show_for_guest = data.show_for_guest
         await self.repo.save_category(category=category)
         await self.repo.session.commit()
+
+        # Re-fetch category to ensure relationships are loaded for documents_count
+        category = await self.repo.get_category(id=id)
         await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
