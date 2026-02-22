@@ -16,6 +16,26 @@ def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(db)
 
 
+# ---------------------------------------------------------------------------
+# Rate limiter dependencies
+#
+# Instead of creating a RateLimiter() instance directly in the decorator,
+# we wrap it in a function. FastAPI calls the function on every request,
+# not at module import time. This allows overriding the dependency
+# via app.dependency_overrides in tests.
+# ---------------------------------------------------------------------------
+
+def rate_limit_default():
+    return RateLimiter(
+        times=settings.RATE_LIMIT_TIMES,
+        seconds=settings.RATE_LIMIT_SECONDS,
+    )
+
+
+def rate_limit_strict():
+    return RateLimiter(times=3, seconds=600)
+
+
 """=== User ==="""
 
 @router.get("/user", response_model=UserResponse)
@@ -28,16 +48,12 @@ async def get_user(
     return user
 
 
-
 """=== Login ==="""
 
 @router.post(
-        "/login", 
-        response_model=UserTokenResponse, 
-        dependencies=[Depends(RateLimiter(
-            times=settings.RATE_LIMIT_TIMES, 
-            seconds=settings.RATE_LIMIT_SECONDS
-        ))]
+    "/login",
+    response_model=UserTokenResponse,
+    dependencies=[Depends(rate_limit_default)],
 )
 async def login(
     data: LoginSchema,
@@ -49,12 +65,11 @@ async def login(
     return await service.login(data=data)
 
 
-
 """=== Signup ==="""
 
 @router.post(
-        "/signup/send-code", 
-        dependencies=[Depends(RateLimiter(times=3, seconds=600))] # Stricter limit for sending codes
+    "/signup/send-code",
+    dependencies=[Depends(rate_limit_strict)],
 )
 async def send_code(
     data: SignupEmailConfirmSchema,
@@ -63,18 +78,13 @@ async def send_code(
     """
     Sends a verification code to the provided email address for signup.
     """
-    return await service.signup_send_code(
-        data=data
-    )
+    return await service.signup_send_code(data=data)
 
 
 @router.patch(
-        "/signup/verify-code", 
-        response_model=UserTokenResponse, 
-        dependencies=[Depends(RateLimiter(
-            times=settings.RATE_LIMIT_TIMES, 
-            seconds=settings.RATE_LIMIT_SECONDS
-        ))]
+    "/signup/verify-code",
+    response_model=UserTokenResponse,
+    dependencies=[Depends(rate_limit_default)],
 )
 async def signup(
     data: SignupSchema,
@@ -84,7 +94,6 @@ async def signup(
     Completes the signup process by verifying the code and creating the user.
     """
     return await service.signup(data=data)
-
 
 
 """=== Tokens ==="""
@@ -100,12 +109,11 @@ async def refresh(
     return await service.refresh_token(token=data)
 
 
-
 """=== Password ==="""
 
 @router.post(
-        "/forgot-password/request-reset", 
-        dependencies=[Depends(RateLimiter(times=3, seconds=600))] # Stricter limit for sending codes
+    "/forgot-password/request-reset",
+    dependencies=[Depends(rate_limit_strict)],
 )
 async def request_password_reset(
     data: RequestPasswordResetSchema,
@@ -114,17 +122,12 @@ async def request_password_reset(
     """
     Initiates the password reset process by sending a verification code.
     """
-    return await service.request_password_reset(
-        data=data
-    )
+    return await service.request_password_reset(data=data)
 
 
 @router.post(
-        "/forgot-password/confirm-email", 
-        dependencies=[Depends(RateLimiter(
-            times=settings.RATE_LIMIT_TIMES, 
-            seconds=settings.RATE_LIMIT_SECONDS
-        ))]
+    "/forgot-password/confirm-email",
+    dependencies=[Depends(rate_limit_default)],
 )
 async def verify_reset_code(
     data: VerifyResetCodeSchema,
