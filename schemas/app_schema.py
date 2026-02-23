@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict, field_validator
+from datetime import datetime
 
 
 class SearchResponse(BaseModel):
@@ -106,6 +107,18 @@ class PageUpdate(BaseModel):
     name: str
 
 
+"""=== Files ==="""
+class DocumentFileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    filename: str
+    content_type: str
+    size: int
+    created_at: datetime
+
+
 """=== Documents ==="""
 class DocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -115,6 +128,7 @@ class DocumentResponse(BaseModel):
     code: str
     name: str
     tags: list[TagResponse] = []
+    files: list[DocumentFileResponse] = []
 
 
 class DocumentsResponse(BaseModel):

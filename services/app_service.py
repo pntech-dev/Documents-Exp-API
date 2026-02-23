@@ -1,10 +1,13 @@
-from fastapi import HTTPException
+import uuid
 import logging
 from typing import Any
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
+from utils import validate_file_extension
 from repositories import AppRepository
+from .file_storage_service import FileStorageService
 from schemas import (
     SearchResponse,
     DepartmentResponse, DepartmentsResponse,
@@ -13,9 +16,10 @@ from schemas import (
     CategoryCreateSchema, CategoryUpdateSchema,
     DocumentResponse, DocumentsResponse,
     DocumentUpdateSchema, DocumentCreateSchema,
-    PageResponse, PagesResponse
+    PageResponse, PagesResponse,
+    DocumentFileResponse
 )
-from models import Page
+from models import Page, DocumentFile
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,7 @@ class AppService:
     def __init__(self, db: AsyncSession, redis: Redis = None) -> None:
         self.repo = AppRepository(db)
         self.redis = redis
+        self.file_service = FileStorageService()
 
 
     async def search(
@@ -219,6 +224,9 @@ class AppService:
         group.has_all_docs_search = data.has_all_docs_search
         await self.repo.save_group(group=group)
         await self.repo.session.commit()
+
+        # Re-fetch group to ensure relationships are loaded for documents_count
+        group = await self.repo.get_group_by_id(id=id)
         await self._clear_cache(cache_key="groups:*")
 
         return DepartmentResponse.model_validate(group)
@@ -443,6 +451,9 @@ class AppService:
         category.show_for_guest = data.show_for_guest
         await self.repo.save_category(category=category)
         await self.repo.session.commit()
+
+        # Re-fetch category to ensure relationships are loaded for documents_count
+        category = await self.repo.get_category(id=id)
         await self._clear_cache(cache_key="categories:*")
 
         return CategoryResponse.model_validate(category)
@@ -699,6 +710,11 @@ class AppService:
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         
+        # Delete files from S3
+        files = await self.repo.get_document_files(document_id=id)
+        for f in files:
+            await self.file_service.delete_file(f.file_path)
+
         # Bulk delete pages
         await self.repo.delete_pages_by_document_ids(document_ids=[id])
         # Delete document
@@ -798,6 +814,104 @@ class AppService:
         await self._save_cache(cache_key, response)
         return response
     
+
+    # ====================
+    # Files
+    # ====================
+
+
+    async def upload_document_file(
+        self, 
+        document_id: int, 
+        file: UploadFile
+    ) -> DocumentFileResponse:
+        """
+        Uploads a file to S3 and saves metadata to DB.
+        """
+        # 0. Validate file extension
+        validate_file_extension(file.filename)
+
+        # 1. Check if document exists
+        document = await self.repo.get_document(id=document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # 2. Generate unique object name for S3
+        # Format: {document_id}/{uuid}.{ext}
+        file_ext = file.filename.split('.')[-1] if '.' in file.filename else "bin"
+        object_name = f"{document_id}/{uuid.uuid4()}.{file_ext}"
+
+        # 3. Calculate size (move cursor to end, tell, move back)
+        try:
+            file.file.seek(0, 2)
+        except TypeError:
+            # Handle nested UploadFile wrapper
+            file.file = file.file.file
+            file.file.seek(0, 2)
+
+        file_size = file.file.tell()
+        file.file.seek(0)
+
+        if file_size > 50 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400, 
+                detail="File size exceeds the maximum limit of 50 MB"
+            )
+
+        # 4. Upload to S3
+        await self.file_service.upload_file(file, object_name)
+
+        # 5. Save to DB
+        file_record = DocumentFile(
+            document_id=document_id,
+            file_path=object_name,
+            filename=file.filename,
+            content_type=file.content_type or "application/octet-stream",
+            size=file_size
+        )
+        saved_file = await self.repo.save_document_file(file_record)
+        await self.repo.session.commit()
+
+        # Clear cache
+        await self._clear_cache(cache_key=f"documents:{document_id}")
+        await self._clear_cache(cache_key="documents:*")
+
+        return DocumentFileResponse.model_validate(saved_file)
+
+
+    async def delete_document_file(self, file_id: int) -> dict:
+        """
+        Deletes a file from DB and S3.
+        """
+        file_record = await self.repo.get_document_file(id=file_id)
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # 1. Delete from S3
+        await self.file_service.delete_file(file_record.file_path)
+
+        # 2. Delete from DB
+        await self.repo.delete_document_file(file_record)
+        await self.repo.session.commit()
+
+        # Clear cache
+        await self._clear_cache(cache_key=f"documents:{file_record.document_id}")
+        await self._clear_cache(cache_key="documents:*")
+
+        return {"detail": "File deleted"}
+
+
+    async def get_file_stream(self, file_id: int):
+        """
+        Returns a stream iterator and filename for downloading.
+        """
+        file_record = await self.repo.get_document_file(id=file_id)
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        stream = self.file_service.download_file_iterator(file_record.file_path)
+        return stream, file_record.filename, file_record.content_type
+
 
     # ====================
     # Service methods

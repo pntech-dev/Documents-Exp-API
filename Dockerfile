@@ -1,19 +1,19 @@
-# Используем официальный легкий образ Python
+# Use official lightweight Python image
 FROM python:3.11-slim
 
-# Устанавливаем рабочую директорию внутри контейнера
+# Set working directory inside the container
 WORKDIR /app
 
-# Запрещаем Python создавать .pyc файлы и буферизировать вывод (для логов)
+# Prevent Python from writing .pyc files and buffering stdout (for logs)
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Копируем файл зависимостей и устанавливаем их
+# Copy requirements file and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь код проекта в контейнер
+# Copy the entire project code into the container
 COPY . .
 
-# Команда запуска. Убедитесь, что ваш файл запуска называется main.py, а объект FastAPI — app
+# Command to run the application. Ensure your entry file is named main.py and the FastAPI object is app
 CMD ["python", "main.py"]

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379"
 
+    # S3 / MinIO Storage
+    S3_ENDPOINT_URL: str = "http://minio:9000"
+    S3_ACCESS_KEY: str
+    S3_SECRET_KEY: str
+    S3_BUCKET_NAME: str = "documents"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

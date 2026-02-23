@@ -2,7 +2,7 @@ from sqlalchemy import select, delete, or_
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Group, Category, Document, Page, Tag
+from models import Group, Category, Document, Page, Tag, DocumentFile
 
 
 class AppRepository:
@@ -45,7 +45,8 @@ class AppRepository:
             list[Document]: A list of matching documents.
         """
         stmt = select(Document).options(
-            selectinload(Document.tags)
+            selectinload(Document.tags),
+            selectinload(Document.files)
         )
 
         joined_category = False
@@ -546,7 +547,8 @@ class AppRepository:
             Document | None: The Document object or None if not found.
         """
         query = select(Document).options(
-            selectinload(Document.tags)
+            selectinload(Document.tags),
+            selectinload(Document.files)
         ).where(Document.id == id)
         document = await self.session.execute(query)
         return document.scalar_one_or_none()
@@ -573,7 +575,8 @@ class AppRepository:
             list[Document]: A list of Document objects.
         """
         query = select(Document).options(
-            selectinload(Document.tags)
+            selectinload(Document.tags),
+            selectinload(Document.files)
         ).order_by(Document.id)
         
         joined_category = False
@@ -657,7 +660,8 @@ class AppRepository:
         
         query = select(Document).options(
             selectinload(Document.tags),
-            selectinload(Document.pages)
+            selectinload(Document.pages),
+            selectinload(Document.files)
         ).where(Document.id == document.id)
         result = await self.session.execute(query)
         return result.scalar_one()
@@ -678,7 +682,8 @@ class AppRepository:
         
         query = select(Document).options(
             selectinload(Document.tags),
-            selectinload(Document.pages)
+            selectinload(Document.pages),
+            selectinload(Document.files)
         ).where(Document.id == document.id)
         result = await self.session.execute(query)
         return result.scalar_one()
@@ -844,3 +849,39 @@ class AppRepository:
                 tags.append(new_tag)
         
         return tags
+
+
+    # ====================
+    # Files
+    # ====================
+
+
+    async def get_document_file(self, id: int) -> DocumentFile | None:
+        """Retrieves a file record by ID."""
+        query = select(DocumentFile).where(DocumentFile.id == id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+        
+
+    async def get_document_files(self, document_id: int) -> list[DocumentFile]:
+        """Retrieves all files for a document."""
+        query = select(DocumentFile).where(DocumentFile.document_id == document_id)
+        result = await self.session.execute(query)
+        return result.scalars().all()
+    
+
+    async def save_document_file(self, file_record: DocumentFile) -> DocumentFile:
+        """Saves a file record to the database."""
+        self.session.add(file_record)
+        await self.session.flush()
+        await self.session.refresh(file_record)
+        return file_record
+
+
+    async def delete_document_file(self, file_record: DocumentFile) -> None:
+        """Deletes a file record from the database."""
+        await self.session.delete(file_record)
+        await self.session.flush()
+
+
+    

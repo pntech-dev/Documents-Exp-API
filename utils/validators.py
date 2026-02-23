@@ -1,3 +1,14 @@
+from fastapi import HTTPException
+
+
+BLOCKED_EXTENSIONS = {
+    "exe", "dll", "bat", "cmd", "sh", "js", "vbs", "scr", 
+    "com", "pif", "jar", "app", "php", "pl", "py", "rb", 
+    "asp", "aspx", "jsp", "cgi", "ps1", "reg", "msi", "wsf",
+    "hta", "cpl", "msc", "lnk", "inf"
+}
+
+
 def validate_password(password: str) -> str:
         """
         Validates the password against security policies.
@@ -34,3 +45,29 @@ def validate_password(password: str) -> str:
             raise ValueError("Password must contain at least one uppercase letter")
 
         return password
+
+
+def validate_file_extension(filename: str) -> None:
+    """
+    Validates that the file extension is not in the blocked list.
+
+    Args:
+        filename (str): The name of the file.
+
+    Raises:
+        HTTPException: If the file type is not allowed.
+    """
+    if not filename:
+        return
+        
+    parts = filename.split(".")
+    if len(parts) < 2:
+        return # No extension
+        
+    ext = parts[-1].lower()
+    
+    if ext in BLOCKED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File type '{ext}' is not allowed for security reasons."
+        )
