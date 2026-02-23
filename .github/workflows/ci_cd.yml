@@ -87,3 +87,8 @@ jobs:
                   docker pull $DOCKER_USERNAME/documents-exp-api:latest
                   docker compose up -d api
                   docker image prune -f
+
+            - name: Run migrations
+              run: |
+                  sleep 5
+                  docker exec documents_api alembic upgrade head
