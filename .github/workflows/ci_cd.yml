@@ -71,11 +71,16 @@ jobs:
         runs-on: self-hosted
 
         steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Copy .env
+              run: cp ~/.env.documents-exp .env
+
             - name: Deploy
               env:
                   DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
               run: |
-                  cd /opt/documents-exp
                   docker compose stop api
                   docker compose rm -f api
                   docker rmi $DOCKER_USERNAME/documents-exp-api:latest || true
