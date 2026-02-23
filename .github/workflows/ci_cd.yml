@@ -15,13 +15,11 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@v4
 
-            - name: Check Python
-              run: python3.11 --version
-
-            - name: Install dependencies
+            - name: Set up virtual environment
               run: |
-                  python3 -m pip install --upgrade pip
-                  pip install -r requirements.txt
+                  python3 -m venv .venv
+                  .venv/bin/pip install --upgrade pip
+                  .venv/bin/pip install -r requirements.txt
 
             - name: Run Pytest
               env:
@@ -38,13 +36,13 @@ jobs:
                   S3_SECRET_KEY: "test"
                   DATABASE_URL: "sqlite+aiosqlite:///:memory:"
               run: |
-                  pytest -v
+                  .venv/bin/pytest -v
 
     build-and-push:
         name: Build Docker Image
         needs: tests
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
 
         steps:
             - name: Checkout code
@@ -70,23 +68,17 @@ jobs:
         name: Deploy to Server
         needs: build-and-push
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
 
         steps:
-            - name: Execute remote commands via SSH
-              uses: appleboy/ssh-action@v1.0.3
+            - name: Deploy
               env:
                   DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-              with:
-                  host: ${{ secrets.SSH_HOST }}
-                  username: ${{ secrets.SSH_USER }}
-                  key: ${{ secrets.SSH_PRIVATE_KEY }}
-                  envs: DOCKER_USERNAME
-                  script: |
-                      cd /opt/documents-exp
-                      docker compose stop api
-                      docker compose rm -f api
-                      docker rmi $DOCKER_USERNAME/documents-exp-api:latest || true
-                      docker pull $DOCKER_USERNAME/documents-exp-api:latest
-                      docker compose up -d api
-                      docker image prune -f
+              run: |
+                  cd /opt/documents-exp
+                  docker compose stop api
+                  docker compose rm -f api
+                  docker rmi $DOCKER_USERNAME/documents-exp-api:latest || true
+                  docker pull $DOCKER_USERNAME/documents-exp-api:latest
+                  docker compose up -d api
+                  docker image prune -f
