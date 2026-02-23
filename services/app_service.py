@@ -844,18 +844,21 @@ class AppService:
         # 3. Calculate size (move cursor to end, tell, move back)
         try:
             file.file.seek(0, 2)
-        except TypeError:
-            # Handle nested UploadFile wrapper
-            file.file = file.file.file
-            file.file.seek(0, 2)
+        except (TypeError, AttributeError):
+            # Handle nested UploadFile wrapper if standard seek fails
+            if hasattr(file.file, "file"):
+                file.file = file.file.file
+                file.file.seek(0, 2)
 
         file_size = file.file.tell()
         file.file.seek(0)
 
+        logger.info(f"Uploading file '{file.filename}' for doc {document_id}. Detected size: {file_size} bytes")
+
         if file_size > 50 * 1024 * 1024:
             raise HTTPException(
                 status_code=400, 
-                detail="File size exceeds the maximum limit of 50 MB"
+                detail=f"File size ({file_size} bytes) exceeds the maximum limit of 50 MB"
             )
 
         # 4. Upload to S3
