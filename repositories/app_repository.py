@@ -1,8 +1,33 @@
-from sqlalchemy import select, delete, or_
+from sqlalchemy import select, delete, or_, text, func
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Group, Category, Document, Page, Tag, DocumentFile
+
+
+def _natural_sort_key_py(code: str) -> list:
+    """
+    Python-side natural sort key for a code string.
+    Splits the code into alternating text/numeric segments and returns a list
+    of (0, int) for numeric segments and (1, str) for text segments so they
+    compare correctly across types.
+
+    Examples:
+        '01КД'      -> [(0,''), (1,0,''), (0,1,''), (1,0,'кд')]
+        '03/1КД'    -> ... numeric 3, then '/1КД' -> numeric 1 after separator
+        '10КД'      -> numeric 10, ...
+        'КД'        -> text only -> sorts before all numeric codes
+    """
+    import re
+    if not code:
+        return [(1, 0, '')]
+    parts = []
+    for segment in re.findall(r'\d+|\D+', code):
+        if segment.isdigit():
+            parts.append((0, int(segment), ''))
+        else:
+            parts.append((1, 0, segment.lower()))
+    return parts
 
 
 class AppRepository:
@@ -20,153 +45,103 @@ class AppRepository:
     # Search
     # ====================
 
-    async def search_documents(
-            self, 
+    async def search(
+            self,
             query: str,
             category_id: int | None = None,
             group_id: int | None = None,
             tags: list[str] | None = None,
             exact_match: bool = False,
             search_fields: list[str] | None = None,
-            show_for_guest: bool = False
-    ) -> list[Document]:
+            include_pages: bool = True,
+            show_for_guest: bool = False,
+    ) -> tuple[list[Document], list[tuple[Page, str]]]:
         """
-        Searches for documents in a category or group matching the query.
-
-        Args:
-            query (str): The search string (space-separated words).
-            category_id (int | None): The category ID to search in.
-            group_id (int | None): The group ID to search in.
-            tags (list[str] | None): List of tags to filter by (AND logic).
-            exact_match (bool): If True, match the whole query string.
-            search_fields (list[str] | None): Fields to search in ('name', 'code').
+        Unified search: finds matching Documents and (optionally) Pages in a
+        single round-trip each, then returns them for the service layer to merge
+        and sort in Python.
 
         Returns:
-            list[Document]: A list of matching documents.
+            (documents, page_rows) where page_rows is a list of
+            (Page, document_code) tuples so the service can sort pages by their
+            parent document code.
         """
-        stmt = select(Document).options(
-            selectinload(Document.tags),
-            selectinload(Document.files)
+        if not search_fields:
+            search_fields = ["name", "code"]
+
+        words = query.split() if not exact_match else [query]
+
+        # ── Documents ────────────────────────────────────────────────────────
+        doc_stmt = (
+            select(Document)
+            .options(selectinload(Document.tags))
         )
 
-        joined_category = False
-
+        doc_joined_cat = False
         if category_id:
-            stmt = stmt.where(Document.category_id == category_id)
+            doc_stmt = doc_stmt.where(Document.category_id == category_id)
         elif group_id:
-            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
-            joined_category = True
+            doc_stmt = doc_stmt.join(Category, Document.category_id == Category.id)
+            doc_stmt = doc_stmt.where(Category.group_id == group_id)
+            doc_joined_cat = True
 
         if show_for_guest:
-            if not joined_category:
-                stmt = stmt.join(Category, Document.category_id == Category.id)
-                joined_category = True
-            stmt = stmt.where(Category.show_for_guest == True)
+            if not doc_joined_cat:
+                doc_stmt = doc_stmt.join(Category, Document.category_id == Category.id)
+                doc_joined_cat = True
+            doc_stmt = doc_stmt.where(Category.show_for_guest == True)
 
         if tags:
             for tag in tags:
-                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
+                doc_stmt = doc_stmt.where(Document.tags.any(Tag.name.ilike(tag)))
 
-        # Determine search columns
-        fields_map = {"name": Document.name, "code": Document.code}
-        target_columns = []
-        if search_fields:
-            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
-        
-        if not target_columns:
-            target_columns = [Document.name, Document.code]
+        doc_fields_map = {"name": Document.name, "code": Document.code}
+        doc_cols = [doc_fields_map[f] for f in search_fields if f in doc_fields_map] or [Document.name, Document.code]
 
-        if exact_match:
-            # Exact match (whole string, case-insensitive)
-            conditions = [col.ilike(query) for col in target_columns]
-            if conditions:
-                stmt = stmt.where(or_(*conditions))
-        else:
-            # Word-based partial match
-            words = query.split()
+        for word in words:
+            pattern = f"%{word}%"
+            doc_stmt = doc_stmt.where(or_(*[col.ilike(pattern) for col in doc_cols]))
+
+        doc_result = await self.session.execute(doc_stmt)
+        documents: list[Document] = list(doc_result.scalars().all())
+
+        # ── Pages ─────────────────────────────────────────────────────────────
+        page_rows: list[tuple[Page, str]] = []
+        if include_pages and query.strip():
+            page_stmt = (
+                select(Page, Document.code.label("document_code"))
+                .join(Document, Document.id == Page.document_id)
+            )
+
+            page_joined_cat = False
+            if category_id:
+                page_stmt = page_stmt.where(Document.category_id == category_id)
+            elif group_id:
+                page_stmt = page_stmt.join(Category, Document.category_id == Category.id)
+                page_stmt = page_stmt.where(Category.group_id == group_id)
+                page_joined_cat = True
+
+            if show_for_guest:
+                if not page_joined_cat:
+                    page_stmt = page_stmt.join(Category, Document.category_id == Category.id)
+                    page_joined_cat = True
+                page_stmt = page_stmt.where(Category.show_for_guest == True)
+
+            if tags:
+                for tag in tags:
+                    page_stmt = page_stmt.where(Document.tags.any(Tag.name.ilike(tag)))
+
+            page_fields_map = {"name": Page.name, "code": Page.designation}
+            page_cols = [page_fields_map[f] for f in search_fields if f in page_fields_map] or [Page.name, Page.designation]
+
             for word in words:
                 pattern = f"%{word}%"
-                conditions = [col.ilike(pattern) for col in target_columns]
-                if conditions:
-                    stmt = stmt.where(or_(*conditions))
+                page_stmt = page_stmt.where(or_(*[col.ilike(pattern) for col in page_cols]))
 
-        stmt = stmt.distinct()
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
-    
+            page_result = await self.session.execute(page_stmt)
+            page_rows = [(row.Page, row.document_code) for row in page_result.all()]
 
-    async def search_pages(
-            self, 
-            query: str, 
-            category_id: int | None = None, 
-            group_id: int | None = None, 
-            tags: list[str] | None = None,
-            exact_match: bool = False,
-            search_fields: list[str] | None = None,
-            show_for_guest: bool = False
-    ) -> list[Page]:
-        """
-        Searches for pages in a category or group matching the query.
-
-        Args:
-            query (str): The search string (space-separated words).
-            category_id (int | None): The category ID to search in.
-            group_id (int | None): The group ID to search in.
-            tags (list[str] | None): List of tags to filter by (AND logic).
-            exact_match (bool): If True, match the whole query string.
-            search_fields (list[str] | None): Fields to search in ('name', 'code').
-
-        Returns:
-            list[Page]: A list of matching pages.
-        """
-        stmt = select(Page).join(
-            Document, Document.id == Page.document_id
-        )
-
-        joined_category = False
-
-        if category_id:
-            stmt = stmt.where(Document.category_id == category_id)
-        elif group_id:
-            stmt = stmt.join(Category, Document.category_id == Category.id).where(Category.group_id == group_id)
-            joined_category = True
-
-        if show_for_guest:
-            if not joined_category:
-                stmt = stmt.join(Category, Document.category_id == Category.id)
-                joined_category = True
-            stmt = stmt.where(Category.show_for_guest == True)
-
-        if tags:
-            for tag in tags:
-                stmt = stmt.where(Document.tags.any(Tag.name.ilike(tag)))
-
-        # Determine search columns (map 'code' to 'designation' for pages)
-        fields_map = {"name": Page.name, "code": Page.designation}
-        target_columns = []
-        if search_fields:
-            target_columns = [fields_map[f] for f in search_fields if f in fields_map]
-        
-        if not target_columns:
-            target_columns = [Page.name, Page.designation]
-
-        if exact_match:
-            # Exact match (whole string, case-insensitive)
-            conditions = [col.ilike(query) for col in target_columns]
-            if conditions:
-                stmt = stmt.where(or_(*conditions))
-        else:
-            # Word-based partial match
-            words = query.split()
-            for word in words:
-                pattern = f"%{word}%"
-                conditions = [col.ilike(pattern) for col in target_columns]
-                if conditions:
-                    stmt = stmt.where(or_(*conditions))
-
-        stmt = stmt.distinct()
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
+        return documents, page_rows
 
 
     # ====================
@@ -577,7 +552,7 @@ class AppRepository:
         query = select(Document).options(
             selectinload(Document.tags),
             selectinload(Document.files)
-        ).order_by(Document.id)
+        ).order_by(Document.code)
         
         joined_category = False
 
@@ -882,6 +857,3 @@ class AppRepository:
         """Deletes a file record from the database."""
         await self.session.delete(file_record)
         await self.session.flush()
-
-
-    

@@ -8,7 +8,7 @@ class DocumentFile(Base):
     __tablename__ = 'document_files'
     
     id = Column(Integer, primary_key=True)
-    document_id = Column(Integer, ForeignKey('documents.id'), nullable=False)
+    document_id = Column(Integer, ForeignKey('documents.id', ondelete="CASCADE"), nullable=False)
     
     file_path = Column(String, nullable=False) # Path (Key) in MinIO
     filename = Column(String, nullable=False)  # Original filename

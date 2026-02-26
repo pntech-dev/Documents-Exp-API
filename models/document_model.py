@@ -6,8 +6,8 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Table
 document_tags = Table(
     'document_tags',
     Base.metadata,
-    Column('document_id', Integer, ForeignKey('documents.id'), primary_key=True),
-    Column('tag_id', Integer, ForeignKey('tags.id'), primary_key=True)
+    Column('document_id', Integer, ForeignKey('documents.id', ondelete="CASCADE"), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tags.id', ondelete="CASCADE"), primary_key=True)
 )
 
 

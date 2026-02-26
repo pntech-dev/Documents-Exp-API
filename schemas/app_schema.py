@@ -98,6 +98,19 @@ class PagesResponse(BaseModel):
     pages: list[PageResponse]
 
 
+class SearchPageResponse(BaseModel):
+    """PageResponse for search results — includes document_code so the
+    client can display the parent document code in the code column."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    order_index: int
+    designation: str
+    name: str
+    document_code: str = ""
+
+
 class PageUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,6 +146,18 @@ class DocumentResponse(BaseModel):
 
 class DocumentsResponse(BaseModel):
     documents: list[DocumentResponse]
+
+
+class SearchDocumentResponse(BaseModel):
+    """Lightweight DocumentResponse for search — excludes files to avoid
+    lazy-load errors when files are not eagerly loaded."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int
+    code: str
+    name: str
+    tags: list[TagResponse] = []
 
 
 class DocumentCreateSchema(BaseModel):
