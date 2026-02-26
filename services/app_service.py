@@ -1,3 +1,4 @@
+import re
 import uuid
 import logging
 from typing import Any
@@ -14,9 +15,9 @@ from schemas import (
     DepartmentCreateSchema, DepartmentUpdate,
     CategoryResponse, CategoriesResponse,
     CategoryCreateSchema, CategoryUpdateSchema,
-    DocumentResponse, DocumentsResponse,
+    DocumentResponse, DocumentsResponse, SearchDocumentResponse,
     DocumentUpdateSchema, DocumentCreateSchema,
-    PageResponse, PagesResponse,
+    PageResponse, PagesResponse, SearchPageResponse,
     DocumentFileResponse
 )
 from models import Page, DocumentFile
@@ -37,6 +38,35 @@ class AppService:
         self.file_service = FileStorageService()
 
 
+    @staticmethod
+    def _natural_sort_key(code: str) -> list:
+        """
+        Python natural sort key for document/page codes.
+        Splits the code into segments and returns a comparison list where
+        numeric segments compare as integers and text segments as lowercase strings.
+
+        Handles: pure digits, pure letters, mixed, Russian/English,
+                 any separators (/, -, ., space, etc.)
+
+        Examples (ascending order):
+            'ВД' < 'КД' < 'МК' < 'ND'    (pure text - lexicographic)
+            '1' < '2' < '9' < '10'        (pure numeric - numeric)
+            '01КД' < '02КД' < '03КД'      (numeric prefix wins)
+            '03КД' < '03/1КД'             (same prefix, text tie-break)
+            '03/1КД' < '04КД'
+            '27КД' < '28/1КД' < '29КД'
+            '107/1КД' < '143КД'
+        """
+        if not code:
+            return [(1, 0, "")]
+        parts = []
+        for seg in re.findall(r"\d+|\D+", code):
+            if seg.isdigit():
+                parts.append((0, int(seg), ""))
+            else:
+                parts.append((1, 0, seg.lower()))
+        return parts
+
     async def search(
             self, 
             query: str,
@@ -50,6 +80,8 @@ class AppService:
     ) -> SearchResponse:
         """
         Searches for documents and pages within a specific category or group.
+        Results are merged and sorted with natural order by code in Python,
+        avoiding expensive computed ORDER BY expressions in SQL.
 
         Args:
             query (str): The search query string.
@@ -59,64 +91,59 @@ class AppService:
         Returns:
             SearchResponse: A response object containing the search results.
         """
-        # Clean tags: remove whitespace and empty strings just in case
-        clean_tags = [
-            tag.strip() for tag in tags if tag.strip()
-        ] if tags else None
+        # Clean tags
+        clean_tags = [t.strip() for t in tags if t.strip()] if tags else None
 
-        # 1. Generate Cache Key
+        # Cache key
         tags_str = ",".join(sorted(clean_tags)) if clean_tags else "None"
         fields_str = ",".join(sorted(search_fields)) if search_fields else "None"
-        cache_key = f"search:{query}:{tags_str}:{group_id}:{category_id}:{exact_match}:{include_pages}:{fields_str}:{is_guest}"
+        cache_key = (
+            f"search:{query}:{tags_str}:{group_id}:{category_id}:"
+            f"{exact_match}:{include_pages}:{fields_str}:{is_guest}"
+        )
 
-        # 2. Try Cache
         cached_data = await self._get_cache(cache_key)
         if cached_data:
             return SearchResponse.model_validate_json(cached_data)
 
         if not category_id and not group_id:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Either category_id or group_id must be provided"
             )
 
-        documents = await self.repo.search_documents(
-            query=query, 
-            category_id=category_id, 
-            group_id=group_id, 
+        # Single repo call returns (documents, page_rows)
+        documents, page_rows = await self.repo.search(
+            query=query,
+            category_id=category_id,
+            group_id=group_id,
             tags=clean_tags,
             exact_match=exact_match,
             search_fields=search_fields,
-            show_for_guest=is_guest
+            include_pages=include_pages,
+            show_for_guest=is_guest,
         )
-        
-        pages = []
-        if include_pages and query.strip():
-            pages = await self.repo.search_pages(
-                query=query, 
-                category_id=category_id, 
-                group_id=group_id, 
-                tags=clean_tags,
-                exact_match=exact_match,
-                search_fields=search_fields,
-                show_for_guest=is_guest
-            )
 
-        search_results = []
+        # Build result dicts, attaching the sort code to each entry
+        entries: list[tuple[list, dict]] = []
 
-        for document in documents:
-            search_results.append(
-                DocumentResponse.model_validate(document).model_dump()
-            )
-        
-        for page in pages:
-            search_results.append(
-                PageResponse.model_validate(page).model_dump()
-            )
+        for doc in documents:
+            d = SearchDocumentResponse.model_validate(doc).model_dump()
+            entries.append((self._natural_sort_key(doc.code or ""), d))
+
+        for page, doc_code in page_rows:
+            # document_code is not an ORM attribute — inject it manually
+            p = SearchPageResponse.model_validate(page).model_dump()
+            p["document_code"] = doc_code or ""
+            entries.append((self._natural_sort_key(doc_code or ""), p))
+
+        # Natural sort: all documents and pages together by code
+        entries.sort(key=lambda x: x[0])
+        search_results = [d for _, d in entries]
 
         response = SearchResponse(result=search_results)
 
-        # 3. Save Cache (Short TTL: 5 minutes = 300 seconds)
+        # Cache for 5 minutes
         await self._save_cache(cache_key, response, expire=300)
 
         return response
