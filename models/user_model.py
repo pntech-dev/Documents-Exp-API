@@ -1,18 +1,19 @@
 from db.base import Base
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 
 
 class User(Base):
-    __tablename__ = "users" # Table name in database
+    __tablename__ = "users"
 
-    # Evry column names has the same name as in SQL
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=True)
     email = Column(String(100), unique=True, nullable=False)
-    department = Column(String(100), default=None, nullable=True)
+    
+    department_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
+    department = relationship('Group', back_populates='users')
 
-    is_active = Column(Boolean, default=False) # Reserving email for a new user
+    is_active = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
 
     password_hash = Column(String, nullable=False)
