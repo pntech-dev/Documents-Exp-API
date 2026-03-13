@@ -24,7 +24,8 @@ from schemas import (
     RequestPasswordResetSchema,
     VerifyResetCodeSchema,
     ResetPasswordSchema,
-    RefreshTokenSchema
+    RefreshTokenSchema,
+    UserUpdateSchema
 )
 from core.config import settings
 from core.email_templates import EMAIL_VERIFICATION_TEMPLATE
