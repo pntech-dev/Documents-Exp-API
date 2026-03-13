@@ -48,7 +48,12 @@ async def get_optional_current_user(
     user = await repo.get_user_by_id(int(user_id))
     if not user:
         return None
-    return UserResponse.model_validate(user)
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        department=user.department.name if user.department else None
+    )
 
 
 # ====================

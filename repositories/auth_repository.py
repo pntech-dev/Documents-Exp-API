@@ -1,4 +1,5 @@
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +22,7 @@ class AuthRepository:
             The User object if found, otherwise None.
         """
 
-        query = select(User).where(User.id == user_id)
+        query = select(User).where(User.id == user_id).options(selectinload(User.department))
         result = await self.session.execute(query)
 
         return result.scalar_one_or_none()
@@ -41,7 +42,7 @@ class AuthRepository:
             The User object if found, otherwise None.
         """
 
-        query = select(User).where(User.email == email)
+        query = select(User).where(User.email == email).options(selectinload(User.department))
         result = await self.session.execute(query)
 
         return result.scalar_one_or_none()

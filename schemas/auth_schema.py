@@ -13,6 +13,11 @@ class UserResponse(BaseModel):
     department: str | None = None
 
 
+class UserUpdateSchema(BaseModel):
+    username: str | None = None
+    department_id: int | None = None
+
+
 class UserTokenResponse(BaseModel):
     access_token: str
     refresh_token: str

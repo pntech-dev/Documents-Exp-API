@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_limiter.depends import RateLimiter
 
 from schemas import *
 from db.deps import get_db
+from models import User
 from services import AuthService
 from utils import get_current_user
 from core.config import settings
@@ -39,12 +40,39 @@ def rate_limit_strict():
 
 @router.get("/user", response_model=UserResponse)
 async def get_user(
-    user: UserResponse = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Retrieves the currently authenticated user's profile information.
     """
-    return user
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        department=user.department.name if user.department else None
+    )
+
+
+@router.patch("/user/{user_id}", response_model=UserResponse)
+async def update_user_data(
+    data: UserUpdateSchema,
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    """
+    Updates a user's profile information.
+
+    - Administrators can update any user.
+    - Regular users can only update their own profile.
+    """
+    if not current_user.is_admin and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to update this user."
+        )
+
+    return await service.update_user_data(data=data, user_id=user_id)
 
 
 """=== Login ==="""

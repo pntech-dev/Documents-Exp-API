@@ -11,6 +11,7 @@ class Group(Base):
     has_all_docs_search = Column(Boolean, default=False)
     
     categories = relationship('Category', back_populates='group')
+    users = relationship('User', back_populates='department')
 
     @property
     def documents_count(self) -> int:
