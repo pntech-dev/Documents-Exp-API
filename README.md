@@ -24,14 +24,15 @@ The system ensures data integrity using PostgreSQL and high performance using Re
 
 ---
 
-## 💡 What's New (v1.1.0) - Tags & Filters
+## 💡 What's New
 
-- **Tag Search**: The API now supports searching documents by tags.
-- **Advanced Search Filters**:
-    - `exact_match`: Toggle between exact phrase matching and word-based partial matching.
-    - `include_pages`: Option to include or exclude document pages from search results.
-    - `search_fields`: Specify which fields to search in (e.g., `name`, `code`).
-- **Optimization**: Performance improvements for search queries and database interactions.
+- **Enhanced User Management**:
+  - The `PATCH /auth/user/{user_id}` endpoint now supports updating a user's `username` and `department_id`.
+  - It is now possible to unassign a user from a department by passing `department_id: null` in the request.
+- **Stability and Bug Fixes**:
+  - Resolved lazy-loading errors for related data (e.g., user's department) during login and authentication, improving the reliability of endpoints that return user information.
+  - Fixed data validation errors in API responses, ensuring a correct and consistent user data structure.
+  - Addressed a `NameError` related to a missing `UserUpdateSchema` import that occurred in the CI/CD environment.
 
 ---
 

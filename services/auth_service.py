@@ -24,7 +24,8 @@ from schemas import (
     RequestPasswordResetSchema,
     VerifyResetCodeSchema,
     ResetPasswordSchema,
-    RefreshTokenSchema
+    RefreshTokenSchema,
+    UserUpdateSchema
 )
 from core.config import settings
 from core.email_templates import EMAIL_VERIFICATION_TEMPLATE
@@ -43,6 +44,38 @@ class AuthService:
     # ===============
     # Public methods
     # ===============
+
+
+    async def update_user_data(self, data: UserUpdateSchema, user_id: int) -> UserResponse:
+        # Find the user in the database
+        user_from_db = await self.repo.get_user_by_id(user_id=user_id)
+        if not user_from_db:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        update_data = data.model_dump(exclude_unset=True)
+
+        # Update username if provided
+        if 'username' in update_data:
+            user_from_db.username = data.username
+            
+        # Update department if provided
+        if 'department_id' in update_data:
+            user_from_db.department_id = data.department_id
+
+        # Save the updated user
+        await self.repo.save_user(user=user_from_db)
+        await self.repo.session.commit()
+        await self.repo.session.refresh(user_from_db)
+        
+        # Create response
+        response = UserResponse(
+            id=user_from_db.id,
+            email=user_from_db.email,
+            username=user_from_db.username,
+            department=user_from_db.department.name if user_from_db.department else None
+        )
+
+        return response
 
 
     """=== Login ==="""
@@ -480,7 +513,7 @@ class AuthService:
                 id=user.id,
                 email=user.email,
                 username=user.username,
-                department=user.department
+                department=user.department.name if user.department else None
             )
         )
 

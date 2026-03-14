@@ -35,8 +35,7 @@ async def lifespan(app: FastAPI):
 
 allow_origins = [
     "http://192.168.0.92",
-    "http://localhost",
-    "https://tsvetotron.com/"
+    "http://localhost"
 ]
 
 app = FastAPI(
